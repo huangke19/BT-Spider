@@ -24,9 +24,29 @@ go build -o bt-spider .
 
 # 指定下载目录
 ./bt-spider /path/to/download
+```
 
-# 粘贴磁力链接即可下载
-magnet> magnet:?xt=urn:btih:xxxxx...
+启动后进入交互式 `bt>` 提示符，支持以下用法：
+
+```
+# 搜索关键词
+bt> search 黑客帝国
+
+# 搜索结果会编号列出，输入序号即可开始下载
+bt> 1
+
+# 也可直接粘贴磁力链接下载
+bt> magnet:?xt=urn:btih:xxxxx...
+```
+
+### 代理支持
+
+搜索功能自动读取系统代理环境变量，无需改代码：
+
+```bash
+export HTTPS_PROXY=http://127.0.0.1:7890
+export HTTP_PROXY=http://127.0.0.1:7890
+./bt-spider
 ```
 
 ### Telegram Bot 模式
@@ -56,7 +76,7 @@ cp config.example.json config.json
 2. 也可通过环境变量设置 Token：
 
 ```bash
-export BT_TELEGRAM_BOT_TOKEN="your_token"
+export BT_TELEGRAM_BOT_TOKEN="***"
 ```
 
 ### Bot 命令
