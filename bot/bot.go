@@ -240,6 +240,14 @@ func (b *Bot) trackProgress(chatID int64, msgID int, dl *engine.Download, name s
 
 	lastText := ""
 	metadataReceived := false
+	var prevCompleted int64
+	prevTime := time.Now()
+	// 滑动窗口计算平均速度
+	type sample struct {
+		bytes int64
+		time  time.Time
+	}
+	samples := make([]sample, 0, 10)
 
 	for range ticker.C {
 		if dl.IsCanceled() {
@@ -251,15 +259,15 @@ func (b *Bot) trackProgress(chatID int64, msgID int, dl *engine.Download, name s
 
 		if total == 0 {
 			if !metadataReceived {
-				// 还在等待元数据
 				continue
 			}
 		} else if !metadataReceived {
 			metadataReceived = true
-			// 更新名称
 			if dl.Name != "" {
 				name = dl.Name
 			}
+			prevCompleted = completed
+			prevTime = time.Now()
 		}
 
 		if done {
@@ -270,20 +278,70 @@ func (b *Bot) trackProgress(chatID int64, msgID int, dl *engine.Download, name s
 		}
 
 		if total > 0 {
+			now := time.Now()
+
+			// 更新滑动窗口
+			samples = append(samples, sample{bytes: completed, time: now})
+			if len(samples) > 10 {
+				samples = samples[1:]
+			}
+
+			// 计算平均速度
+			var avgSpeed float64
+			if len(samples) >= 2 {
+				first := samples[0]
+				last := samples[len(samples)-1]
+				dt := last.time.Sub(first.time).Seconds()
+				if dt > 0 {
+					avgSpeed = float64(last.bytes-first.bytes) / dt
+				}
+			}
+			if avgSpeed <= 0 {
+				dt := now.Sub(prevTime).Seconds()
+				if dt > 0 {
+					avgSpeed = float64(completed-prevCompleted) / dt
+				}
+			}
+
+			// 计算 ETA
+			remaining := total - completed
+			eta := "计算中..."
+			if avgSpeed > 0 && remaining > 0 {
+				secs := float64(remaining) / avgSpeed
+				eta = formatDuration(time.Duration(secs) * time.Second)
+			}
+
+			prevCompleted = completed
+			prevTime = now
+
 			percent := float64(completed) / float64(total) * 100
 			bar := progressBar(percent, 20)
 
-			text := fmt.Sprintf("⬇️ 下载中: %s\n\n%s %.1f%%\n%s / %s | 👥 %d peers",
+			text := fmt.Sprintf("⬇️ 下载中: %s\n\n%s %.1f%%\n%s / %s\n⚡ %s/s | ⏱ ETA %s | 👥 %d peers",
 				name, bar, percent,
-				formatBytes(completed), formatBytes(total), peers)
+				formatBytes(completed), formatBytes(total),
+				formatBytes(int64(avgSpeed)), eta, peers)
 
-			// 避免频繁编辑相同内容
 			if text != lastText {
 				b.editMessage(chatID, msgID, text)
 				lastText = text
 			}
 		}
 	}
+}
+
+func formatDuration(d time.Duration) string {
+	d = d.Round(time.Second)
+	h := int(d.Hours())
+	m := int(d.Minutes()) % 60
+	s := int(d.Seconds()) % 60
+	if h > 0 {
+		return fmt.Sprintf("%dh%02dm%02ds", h, m, s)
+	}
+	if m > 0 {
+		return fmt.Sprintf("%dm%02ds", m, s)
+	}
+	return fmt.Sprintf("%ds", s)
 }
 
 func (b *Bot) handleStatus(chatID int64) {

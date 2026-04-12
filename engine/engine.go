@@ -70,8 +70,17 @@ func (e *Engine) AddMagnet(magnet string) error {
 	return nil
 }
 
-// showProgress 实时显示下载进度
+// showProgress 实时显示下载进度（含速度和 ETA）
 func (e *Engine) showProgress(t *torrent.Torrent) {
+	var prevCompleted int64
+	prevTime := time.Now()
+	// 滑动窗口计算平均速度（最近 10 秒）
+	type sample struct {
+		bytes int64
+		time  time.Time
+	}
+	samples := make([]sample, 0, 10)
+
 	for {
 		stats := t.Stats()
 		total := t.Info().TotalLength()
@@ -82,12 +91,55 @@ func (e *Engine) showProgress(t *torrent.Torrent) {
 			continue
 		}
 
+		now := time.Now()
+		elapsed := now.Sub(prevTime).Seconds()
+
+		// 计算瞬时速度
+		var speed float64
+		if elapsed > 0 {
+			speed = float64(completed-prevCompleted) / elapsed
+		}
+
+		// 更新滑动窗口
+		samples = append(samples, sample{bytes: completed, time: now})
+		if len(samples) > 10 {
+			samples = samples[1:]
+		}
+
+		// 用滑动窗口计算平均速度（更平滑）
+		var avgSpeed float64
+		if len(samples) >= 2 {
+			first := samples[0]
+			last := samples[len(samples)-1]
+			dt := last.time.Sub(first.time).Seconds()
+			if dt > 0 {
+				avgSpeed = float64(last.bytes-first.bytes) / dt
+			}
+		}
+		if avgSpeed <= 0 {
+			avgSpeed = speed
+		}
+
+		prevCompleted = completed
+		prevTime = now
+
+		// 计算 ETA
+		remaining := total - completed
+		eta := "计算中..."
+		if avgSpeed > 0 && remaining > 0 {
+			secs := float64(remaining) / avgSpeed
+			eta = formatDuration(time.Duration(secs) * time.Second)
+		}
+
 		percent := float64(completed) / float64(total) * 100
 		bar := progressBar(percent, 30)
 
-		fmt.Printf("\r%s %.1f%% | %s/%s | ↓ %d peers",
+		// 清行并输出：进度条 百分比 | 已下载/总大小 | 速度 | ETA | peers
+		fmt.Printf("\r\033[K%s %.1f%% | %s/%s | %s/s | ETA %s | ↓ %d peers",
 			bar, percent,
 			formatBytes(completed), formatBytes(total),
+			formatBytes(int64(avgSpeed)),
+			eta,
 			stats.ActivePeers,
 		)
 
@@ -98,6 +150,21 @@ func (e *Engine) showProgress(t *torrent.Torrent) {
 
 		time.Sleep(time.Second)
 	}
+}
+
+// formatDuration 格式化剩余时间
+func formatDuration(d time.Duration) string {
+	d = d.Round(time.Second)
+	h := int(d.Hours())
+	m := int(d.Minutes()) % 60
+	s := int(d.Seconds()) % 60
+	if h > 0 {
+		return fmt.Sprintf("%dh%02dm%02ds", h, m, s)
+	}
+	if m > 0 {
+		return fmt.Sprintf("%dm%02ds", m, s)
+	}
+	return fmt.Sprintf("%ds", s)
 }
 
 func (e *Engine) Close() {
