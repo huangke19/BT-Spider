@@ -12,6 +12,7 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/huangke/bt-spider/config"
 	"github.com/huangke/bt-spider/engine"
+	"github.com/huangke/bt-spider/pkg/utils"
 	"github.com/huangke/bt-spider/search"
 )
 
@@ -119,16 +120,7 @@ func (b *Bot) handleSearch(chatID int64, keyword string) {
 	// 发送搜索中提示
 	waitMsg := b.reply(chatID, fmt.Sprintf("🔍 搜索: %s ...", keyword))
 
-	providers := []search.Provider{
-		search.NewApiBay(),
-		search.NewBtDig(),
-		search.NewBT4G(),
-		search.NewYTS(),
-		search.NewEZTV(),
-		search.NewNyaa(),
-	}
-
-	results, err := search.Search(keyword, providers)
+	results, err := search.Search(keyword, search.DefaultProviders())
 	if err != nil {
 		b.editMessage(chatID, waitMsg, fmt.Sprintf("❌ 搜索失败: %v", err))
 		return
@@ -164,7 +156,7 @@ func (b *Bot) handleSearch(chatID int64, keyword string) {
 
 		// 每行一个按钮
 		btn := tgbotapi.NewInlineKeyboardButtonData(
-			fmt.Sprintf("⬇️ %d. %s (%s)", i+1, truncate(r.Name, 30), r.Size),
+			fmt.Sprintf("⬇️ %d. %s (%s)", i+1, utils.Truncate(r.Name, 30), r.Size),
 			fmt.Sprintf("dl:%d", i),
 		)
 		rows = append(rows, tgbotapi.NewInlineKeyboardRow(btn))
@@ -209,7 +201,7 @@ func (b *Bot) handleCallback(cb *tgbotapi.CallbackQuery) {
 	result := results[idx]
 
 	// 回应 callback
-	callback := tgbotapi.NewCallback(cb.ID, fmt.Sprintf("开始下载: %s", truncate(result.Name, 40)))
+	callback := tgbotapi.NewCallback(cb.ID, fmt.Sprintf("开始下载: %s", utils.Truncate(result.Name, 40)))
 	b.api.Request(callback)
 
 	// 开始下载
@@ -274,7 +266,7 @@ func (b *Bot) trackProgress(chatID int64, msgID int, dl *engine.Download, name s
 
 		if done {
 			text := fmt.Sprintf("✅ 下载完成!\n\n📦 %s\n📁 %s\n💾 %s",
-				name, formatBytes(total), b.cfg.DownloadDir)
+				name, utils.FormatBytes(total), b.cfg.DownloadDir)
 			b.editMessage(chatID, msgID, text)
 
 			// 发送文件到 Telegram
@@ -313,19 +305,19 @@ func (b *Bot) trackProgress(chatID int64, msgID int, dl *engine.Download, name s
 			eta := "计算中..."
 			if avgSpeed > 0 && remaining > 0 {
 				secs := float64(remaining) / avgSpeed
-				eta = formatDuration(time.Duration(secs) * time.Second)
+				eta = utils.FormatDuration(time.Duration(secs) * time.Second)
 			}
 
 			prevCompleted = completed
 			prevTime = now
 
 			percent := float64(completed) / float64(total) * 100
-			bar := progressBar(percent, 20)
+			bar := utils.ProgressBar(percent, 20)
 
 			text := fmt.Sprintf("⬇️ 下载中: %s\n\n%s %.1f%%\n%s / %s\n⚡ %s/s | ⏱ ETA %s | 👥 %d peers",
 				name, bar, percent,
-				formatBytes(completed), formatBytes(total),
-				formatBytes(int64(avgSpeed)), eta, peers)
+				utils.FormatBytes(completed), utils.FormatBytes(total),
+				utils.FormatBytes(int64(avgSpeed)), eta, peers)
 
 			if text != lastText {
 				b.editMessage(chatID, msgID, text)
@@ -333,20 +325,6 @@ func (b *Bot) trackProgress(chatID int64, msgID int, dl *engine.Download, name s
 			}
 		}
 	}
-}
-
-func formatDuration(d time.Duration) string {
-	d = d.Round(time.Second)
-	h := int(d.Hours())
-	m := int(d.Minutes()) % 60
-	s := int(d.Seconds()) % 60
-	if h > 0 {
-		return fmt.Sprintf("%dh%02dm%02ds", h, m, s)
-	}
-	if m > 0 {
-		return fmt.Sprintf("%dm%02ds", m, s)
-	}
-	return fmt.Sprintf("%ds", s)
 }
 
 func (b *Bot) handleStatus(chatID int64) {
@@ -360,7 +338,7 @@ func (b *Bot) handleStatus(chatID int64) {
 		if total > 0 {
 			percent := float64(completed) / float64(total) * 100
 			active = append(active, fmt.Sprintf("📦 %s\n   %.1f%% | %s/%s | 👥 %d peers",
-				dl.Name, percent, formatBytes(completed), formatBytes(total), peers))
+				dl.Name, percent, utils.FormatBytes(completed), utils.FormatBytes(total), peers))
 		} else {
 			name := dl.Name
 			if name == "" {
@@ -442,30 +420,6 @@ func (b *Bot) Stop() {
 	b.api.StopReceivingUpdates()
 }
 
-func truncate(s string, maxLen int) string {
-	runes := []rune(s)
-	if len(runes) <= maxLen {
-		return s
-	}
-	return string(runes[:maxLen]) + "..."
-}
-
-func progressBar(percent float64, width int) string {
-	filled := int(percent / 100 * float64(width))
-	if filled > width {
-		filled = width
-	}
-	bar := make([]rune, width)
-	for i := range bar {
-		if i < filled {
-			bar[i] = '█'
-		} else {
-			bar[i] = '░'
-		}
-	}
-	return string(bar)
-}
-
 // sendDownloadedFiles 将下载完成的文件发送到 Telegram
 func (b *Bot) sendDownloadedFiles(chatID int64, dl *engine.Download) {
 	// Telegram Bot API 文件大小限制: 50MB
@@ -500,21 +454,4 @@ func (b *Bot) sendDownloadedFiles(chatID int64, dl *engine.Download) {
 	}
 }
 
-func formatBytes(b int64) string {
-	const (
-		KB = 1024
-		MB = KB * 1024
-		GB = MB * 1024
-	)
-	switch {
-	case b >= GB:
-		return fmt.Sprintf("%.2f GB", float64(b)/float64(GB))
-	case b >= MB:
-		return fmt.Sprintf("%.1f MB", float64(b)/float64(MB))
-	case b >= KB:
-		return fmt.Sprintf("%.1f KB", float64(b)/float64(KB))
-	default:
-		return fmt.Sprintf("%d B", b)
-	}
-}
 

@@ -6,7 +6,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"time"
+
+	"github.com/huangke/bt-spider/pkg/httputil"
 )
 
 // YTS 基于 YTS JSON API 的搜索源（电影资源）
@@ -18,9 +19,7 @@ type YTS struct {
 func NewYTS() *YTS {
 	return &YTS{
 		baseURL: "https://yts.mx/api/v2",
-		client: &http.Client{
-			Timeout: 15 * time.Second,
-		},
+		client:  httputil.NewClient(httputil.DefaultTimeout),
 	}
 }
 
@@ -61,7 +60,7 @@ func (y *YTS) Search(keyword string, page int) ([]Result, error) {
 	if err != nil {
 		return nil, fmt.Errorf("创建请求失败: %w", err)
 	}
-	req.Header.Set("User-Agent", "BT-Spider/1.0")
+	req.Header.Set("User-Agent", httputil.DefaultUA)
 
 	resp, err := y.client.Do(req)
 	if err != nil {

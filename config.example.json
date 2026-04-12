@@ -3,6 +3,7 @@
   "listen_addr": ":6881",
   "max_conns": 80,
   "seed": false,
-  "telegram_bot_token": "YOUR_BOT_TOKEN_HERE",
+  "enable_tracker_list": true,
+  "telegram_bot_token": "",
   "allowed_user_ids": []
 }

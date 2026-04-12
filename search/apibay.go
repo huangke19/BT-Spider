@@ -8,8 +8,10 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"time"
 	"unicode"
+
+	"github.com/huangke/bt-spider/pkg/httputil"
+	"github.com/huangke/bt-spider/pkg/utils"
 )
 
 // ApiBay 基于 ThePirateBay API 的搜索源
@@ -21,9 +23,7 @@ type ApiBay struct {
 func NewApiBay() *ApiBay {
 	return &ApiBay{
 		baseURL: "https://apibay.org",
-		client: &http.Client{
-			Timeout: 15 * time.Second,
-		},
+		client:  httputil.NewClient(httputil.DefaultTimeout),
 	}
 }
 
@@ -48,7 +48,7 @@ func (a *ApiBay) Search(keyword string, page int) ([]Result, error) {
 	if err != nil {
 		return nil, fmt.Errorf("创建请求失败: %w", err)
 	}
-	req.Header.Set("User-Agent", "BT-Spider/1.0")
+	req.Header.Set("User-Agent", httputil.DefaultUA)
 
 	resp, err := a.client.Do(req)
 	if err != nil {
@@ -83,7 +83,7 @@ func (a *ApiBay) Search(keyword string, page int) ([]Result, error) {
 
 		result := Result{
 			Name:     r.Name,
-			Size:     formatSize(sizeBytes),
+			Size:     utils.FormatBytes(sizeBytes),
 			Seeders:  seeders,
 			Leechers: leechers,
 			InfoHash: r.InfoHash,
@@ -164,20 +164,3 @@ func keywordTokens(keyword string) []string {
 	return tokens
 }
 
-func formatSize(bytes int64) string {
-	const (
-		KB = 1024
-		MB = KB * 1024
-		GB = MB * 1024
-	)
-	switch {
-	case bytes >= GB:
-		return fmt.Sprintf("%.2f GB", float64(bytes)/float64(GB))
-	case bytes >= MB:
-		return fmt.Sprintf("%.1f MB", float64(bytes)/float64(MB))
-	case bytes >= KB:
-		return fmt.Sprintf("%.1f KB", float64(bytes)/float64(KB))
-	default:
-		return fmt.Sprintf("%d B", bytes)
-	}
-}

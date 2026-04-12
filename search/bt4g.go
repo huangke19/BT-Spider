@@ -8,7 +8,8 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
-	"time"
+
+	"github.com/huangke/bt-spider/pkg/httputil"
 )
 
 // BT4G 基于 BT4G RSS 接口的搜索源
@@ -20,9 +21,7 @@ type BT4G struct {
 func NewBT4G() *BT4G {
 	return &BT4G{
 		baseURL: "https://bt4gprx.com",
-		client: &http.Client{
-			Timeout: 15 * time.Second,
-		},
+		client:  httputil.NewClient(httputil.DefaultTimeout),
 	}
 }
 
@@ -56,7 +55,7 @@ func (b *BT4G) Search(keyword string, page int) ([]Result, error) {
 	if err != nil {
 		return nil, fmt.Errorf("创建请求失败: %w", err)
 	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
+	req.Header.Set("User-Agent", httputil.DefaultUA)
 
 	resp, err := b.client.Do(req)
 	if err != nil {

@@ -23,18 +23,40 @@ type Provider interface {
 	Search(keyword string, page int) ([]Result, error)
 }
 
-// Search 使用所有可用源搜索关键词，合并去重，按做种数排序
+// DefaultProviders 返回所有内置的 torrent 搜索源
+func DefaultProviders() []Provider {
+	return []Provider{
+		NewApiBay(),
+		NewBtDig(),
+		NewBT4G(),
+		NewYTS(),
+		NewEZTV(),
+		NewNyaa(),
+	}
+}
+
+// Search 使用所有可用源并发搜索关键词，合并去重，按做种数排序
 func Search(keyword string, providers []Provider) ([]Result, error) {
+	type providerResult struct {
+		results []Result
+		err     error
+	}
+	ch := make(chan providerResult, len(providers))
+	for _, p := range providers {
+		go func(p Provider) {
+			results, err := p.Search(keyword, 0)
+			ch <- providerResult{results, err}
+		}(p)
+	}
 	var allResults []Result
 	var lastErr error
-
-	for _, p := range providers {
-		results, err := p.Search(keyword, 0)
-		if err != nil {
-			lastErr = err
+	for range providers {
+		pr := <-ch
+		if pr.err != nil {
+			lastErr = pr.err
 			continue
 		}
-		allResults = append(allResults, results...)
+		allResults = append(allResults, pr.results...)
 	}
 
 	if len(allResults) == 0 && lastErr != nil {

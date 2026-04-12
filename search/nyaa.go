@@ -9,7 +9,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"time"
+
+	"github.com/huangke/bt-spider/pkg/httputil"
 )
 
 // Nyaa 基于 Nyaa.si RSS 的搜索源（动漫/日语资源）
@@ -21,9 +22,7 @@ type Nyaa struct {
 func NewNyaa() *Nyaa {
 	return &Nyaa{
 		baseURL: "https://nyaa.si",
-		client: &http.Client{
-			Timeout: 15 * time.Second,
-		},
+		client:  httputil.NewClient(httputil.DefaultTimeout),
 	}
 }
 
@@ -61,7 +60,7 @@ func (n *Nyaa) Search(keyword string, page int) ([]Result, error) {
 	if err != nil {
 		return nil, fmt.Errorf("创建请求失败: %w", err)
 	}
-	req.Header.Set("User-Agent", "BT-Spider/1.0")
+	req.Header.Set("User-Agent", httputil.DefaultUA)
 
 	resp, err := n.client.Do(req)
 	if err != nil {

@@ -3,7 +3,6 @@ package search
 import (
 	"fmt"
 	"net/url"
-	"time"
 )
 
 // AnnaArchive 基于 Anna's Archive 的电子书搜索源
@@ -19,7 +18,6 @@ func (a *AnnaArchive) Name() string {
 
 func (a *AnnaArchive) SearchBooks(keyword string) ([]BookResult, error) {
 	q := url.QueryEscape(keyword)
-	_ = time.Second // keep import if needed later
 	return []BookResult{
 		{
 			Title:     fmt.Sprintf("%s — epub (中文优先)", keyword),

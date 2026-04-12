@@ -56,6 +56,11 @@ func (e *Engine) AddMagnetAsync(magnet string) (*Download, error) {
 		return nil, fmt.Errorf("解析磁力链接失败: %w", err)
 	}
 
+	// 注入最新 tracker 列表
+	if e.trackers != nil {
+		t.AddTrackers(e.trackers.Get())
+	}
+
 	dl := &Download{
 		Torrent: t,
 	}

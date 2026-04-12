@@ -6,9 +6,9 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
-	"strconv"
 	"strings"
-	"time"
+
+	"github.com/huangke/bt-spider/pkg/httputil"
 )
 
 // BtDig 基于 BTDigg DHT 搜索引擎
@@ -20,9 +20,7 @@ type BtDig struct {
 func NewBtDig() *BtDig {
 	return &BtDig{
 		baseURL: "https://btdig.com",
-		client: &http.Client{
-			Timeout: 15 * time.Second,
-		},
+		client:  httputil.NewClient(httputil.DefaultTimeout),
 	}
 }
 
@@ -38,7 +36,7 @@ func (b *BtDig) Search(keyword string, page int) ([]Result, error) {
 	if err != nil {
 		return nil, fmt.Errorf("创建请求失败: %w", err)
 	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36")
+	req.Header.Set("User-Agent", httputil.DefaultUA)
 
 	resp, err := b.client.Do(req)
 	if err != nil {
@@ -128,25 +126,3 @@ func (b *BtDig) parseHTML(html string) ([]Result, error) {
 	return results, nil
 }
 
-// parseSizeToBytes 将大小字符串转为字节数（用于排序）
-func parseSizeToBytes(size string) int64 {
-	size = strings.TrimSpace(strings.ToUpper(size))
-	var multiplier int64 = 1
-
-	if strings.HasSuffix(size, "GB") {
-		multiplier = 1024 * 1024 * 1024
-		size = strings.TrimSuffix(size, "GB")
-	} else if strings.HasSuffix(size, "MB") {
-		multiplier = 1024 * 1024
-		size = strings.TrimSuffix(size, "MB")
-	} else if strings.HasSuffix(size, "KB") {
-		multiplier = 1024
-		size = strings.TrimSuffix(size, "KB")
-	}
-
-	val, err := strconv.ParseFloat(strings.TrimSpace(size), 64)
-	if err != nil {
-		return 0
-	}
-	return int64(val * float64(multiplier))
-}

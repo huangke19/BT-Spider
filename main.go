@@ -2,60 +2,47 @@ package main
 
 import (
 	"bufio"
-	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"os/signal"
 	"strconv"
 	"strings"
 	"syscall"
 
+	"github.com/huangke/bt-spider/bot"
 	"github.com/huangke/bt-spider/config"
 	"github.com/huangke/bt-spider/engine"
 	"github.com/huangke/bt-spider/search"
 )
-
-func doSearch(keyword string) {
-	fmt.Printf("🔍 搜索: %s\n", keyword)
-	providers := []search.Provider{
-		search.NewApiBay(),
-		search.NewBtDig(),
-		search.NewBT4G(),
-		search.NewYTS(),
-		search.NewEZTV(),
-		search.NewNyaa(),
-	}
-	results, err := search.Search(keyword, providers)
-	if err != nil {
-		fmt.Printf("❌ 搜索失败: %v\n", err)
-		return
-	}
-	if len(results) == 0 {
-		fmt.Println("未找到有做种的结果")
-		return
-	}
-	fmt.Printf("\n找到 %d 个结果（按做种数排序）:\n\n", len(results))
-	limit := 20
-	if len(results) < limit {
-		limit = len(results)
-	}
-	for i, r := range results[:limit] {
-		fmt.Printf("  [%d] %s\n      %s | Seeders: %d | Leechers: %d | %s\n",
-			i+1, r.Name, r.Size, r.Seeders, r.Leechers, r.Source)
-	}
-	fmt.Println()
-}
 
 func main() {
 	fmt.Println("🕷  BT-Spider v0.2.0")
 	fmt.Println("输入 magnet 链接下载，search <关键词> 搜索，book <书名> 搜电子书，quit 退出")
 	fmt.Println()
 
-	cfg := config.DefaultConfig()
+	// 检测 bot 模式：--bot 参数或 BT_TELEGRAM_BOT_TOKEN 环境变量
+	botMode := false
+	for _, arg := range os.Args[1:] {
+		if arg == "--bot" || arg == "-bot" {
+			botMode = true
+		}
+	}
+	if os.Getenv("BT_TELEGRAM_BOT_TOKEN") != "" {
+		botMode = true
+	}
 
-	if len(os.Args) > 1 {
-		cfg.DownloadDir = os.Args[1]
+	// 先尝试从配置文件加载
+	cfg, _ := config.LoadConfig("config.json")
+	if cfg == nil {
+		cfg = config.DefaultConfig()
+	}
+
+	// 命令行参数覆盖下载目录
+	for _, arg := range os.Args[1:] {
+		if arg != "--bot" && arg != "-bot" {
+			cfg.DownloadDir = arg
+			break
+		}
 	}
 
 	eng, err := engine.New(cfg)
@@ -67,6 +54,27 @@ func main() {
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+
+	// Bot 模式
+	if botMode || cfg.HasTelegram() {
+		if !cfg.HasTelegram() {
+			fmt.Fprintf(os.Stderr, "❌ Bot 模式需要配置 Telegram Bot Token（config.json 或 BT_TELEGRAM_BOT_TOKEN 环境变量）\n")
+			os.Exit(1)
+		}
+		b, err := bot.New(cfg, eng)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "❌ Bot 启动失败: %v\n", err)
+			os.Exit(1)
+		}
+		go b.Run()
+		fmt.Println("🤖 Bot 模式已启动，按 Ctrl+C 退出")
+		<-sigCh
+		fmt.Println("\n👋 正在退出...")
+		b.Stop()
+		return
+	}
+
+	// 交互模式
 	go func() {
 		<-sigCh
 		fmt.Println("\n👋 正在退出...")
@@ -102,15 +110,7 @@ func main() {
 				fmt.Println("⚠️  请输入搜索关键词")
 				continue
 			}
-			providers := []search.Provider{
-				search.NewApiBay(),
-				search.NewBtDig(),
-				search.NewBT4G(),
-				search.NewYTS(),
-				search.NewEZTV(),
-				search.NewNyaa(),
-			}
-			results, err := search.Search(keyword, providers)
+			results, err := search.Search(keyword, search.DefaultProviders())
 			if err != nil {
 				fmt.Printf("❌ 搜索失败: %v\n", err)
 				continue
@@ -138,7 +138,7 @@ func main() {
 				continue
 			}
 			fmt.Printf("📚 搜索电子书: %s\n", keyword)
-			books, err := zlibSearch(keyword)
+			books, err := search.ZlibSearch(keyword)
 			if err != nil {
 				fmt.Printf("❌ 搜索失败: %v\n", err)
 				continue
@@ -166,7 +166,7 @@ func main() {
 			fmt.Println()
 
 		default:
-			// 尝试解析为序号（search 后续选择）
+			// 尝试解析为序号（search/book 后续选择）
 			if num, err := strconv.Atoi(input); err == nil {
 				if num >= 1 && num <= len(lastResults) {
 					r := lastResults[num-1]
@@ -178,7 +178,7 @@ func main() {
 				} else if num >= 1 && num <= len(lastBooks) {
 					b := lastBooks[num-1]
 					fmt.Printf("⬇️  下载电子书: %s\n", b["title"])
-					if err := zlibDownload(b["id"], cfg.DownloadDir); err != nil {
+					if err := search.ZlibDownload(b["id"], cfg.DownloadDir); err != nil {
 						fmt.Fprintf(os.Stderr, "❌ 下载失败: %v\n", err)
 					}
 					fmt.Println()
@@ -190,114 +190,4 @@ func main() {
 			}
 		}
 	}
-}
-
-// zlibBin 返回 zlib 可执行文件路径（优先 ~/bin/zlib，其次 PATH）
-func zlibBin() string {
-	home, _ := os.UserHomeDir()
-	local := home + "/bin/zlib"
-	if _, err := os.Stat(local); err == nil {
-		return local
-	}
-	if p, err := exec.LookPath("zlib"); err == nil {
-		return p
-	}
-	return "zlib"
-}
-
-// zlibSession 读取 zlib CLI 保存的 session（cookies + domain）
-type zlibSession struct {
-	Cookies map[string]string `json:"cookies"`
-	Domain  string            `json:"domain"`
-}
-
-func loadZlibSession() (*zlibSession, error) {
-	home, _ := os.UserHomeDir()
-	data, err := os.ReadFile(home + "/.config/zlib/session.json")
-	if err != nil {
-		return nil, fmt.Errorf("未找到 zlib session，请先运行: ~/bin/zlib login")
-	}
-	var s zlibSession
-	if err := json.Unmarshal(data, &s); err != nil {
-		return nil, err
-	}
-	return &s, nil
-}
-
-// zlibSearch 通过 zlib CLI 搜索电子书，解析表格输出
-func zlibSearch(keyword string) ([]map[string]string, error) {
-	// 确认 session 存在
-	if _, err := loadZlibSession(); err != nil {
-		return nil, err
-	}
-	cmd := exec.Command(zlibBin(), "search", keyword, "-n", "15")
-	cmd.Env = os.Environ()
-	out, err := cmd.Output()
-	if err != nil {
-		return nil, fmt.Errorf("zlib search 失败: %w", err)
-	}
-	return parseZlibTable(string(out)), nil
-}
-
-// parseZlibTable 解析 zlib search 输出的 box-drawing 表格
-// 格式: │ # │ ID │ Title │ Authors │ Year │ Format │ Size │
-func parseZlibTable(output string) []map[string]string {
-	var books []map[string]string
-	lines := strings.Split(output, "\n")
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if !strings.HasPrefix(line, "│") {
-			continue
-		}
-		// 去掉首尾 │，按 │ 分割
-		line = strings.Trim(line, "│")
-		cols := strings.Split(line, "│")
-		if len(cols) < 7 {
-			continue
-		}
-		num := strings.TrimSpace(cols[0])
-		// 跳过表头
-		if num == "#" || num == "" {
-			continue
-		}
-		// 验证第一列是数字
-		if _, err := strconv.Atoi(num); err != nil {
-			continue
-		}
-		id := strings.TrimSpace(cols[1])
-		title := strings.TrimSpace(cols[2])
-		author := strings.TrimSpace(cols[3])
-		year := strings.TrimSpace(cols[4])
-		format := strings.TrimSpace(cols[5])
-		size := strings.TrimSpace(cols[6])
-		if id == "" || title == "" {
-			continue
-		}
-		books = append(books, map[string]string{
-			"id":      id,
-			"title":   title,
-			"authors": author,
-			"format":  format,
-			"year":    year,
-			"size":    size,
-		})
-	}
-	return books
-}
-
-// zlibDownload 调用 zlib download <id>，通过 script 提供伪 TTY
-func zlibDownload(id, destDir string) error {
-	if destDir == "" {
-		home, _ := os.UserHomeDir()
-		destDir = home + "/Documents/Books"
-	}
-	if err := os.MkdirAll(destDir, 0755); err != nil {
-		return err
-	}
-	cmd := exec.Command("script", "-q", "/dev/null",
-		zlibBin(), "download", id, "-d", destDir)
-	cmd.Env = os.Environ()
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
 }

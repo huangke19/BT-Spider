@@ -1,2 +1,18 @@
+# Binary
 bt-spider
-*.mp4
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Config with secrets
+config.json
+
+# Downloads
+*.torrent

@@ -8,7 +8,9 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"time"
+
+	"github.com/huangke/bt-spider/pkg/httputil"
+	"github.com/huangke/bt-spider/pkg/utils"
 )
 
 // EZTV 基于 EZTV JSON API 的搜索源（美剧资源）
@@ -20,9 +22,7 @@ type EZTV struct {
 func NewEZTV() *EZTV {
 	return &EZTV{
 		baseURL: "https://eztv.re/api",
-		client: &http.Client{
-			Timeout: 15 * time.Second,
-		},
+		client:  httputil.NewClient(httputil.DefaultTimeout),
 	}
 }
 
@@ -56,7 +56,7 @@ func (e *EZTV) Search(keyword string, page int) ([]Result, error) {
 	if err != nil {
 		return nil, fmt.Errorf("创建请求失败: %w", err)
 	}
-	req.Header.Set("User-Agent", "BT-Spider/1.0")
+	req.Header.Set("User-Agent", httputil.DefaultUA)
 
 	resp, err := e.client.Do(req)
 	if err != nil {
@@ -98,7 +98,7 @@ func (e *EZTV) Search(keyword string, page int) ([]Result, error) {
 
 		result := Result{
 			Name:     name,
-			Size:     formatSize(sizeBytes),
+			Size:     utils.FormatBytes(sizeBytes),
 			Seeders:  t.Seeds,
 			Leechers: t.Peers,
 			InfoHash: t.Hash,
