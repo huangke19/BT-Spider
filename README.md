@@ -1,72 +1,72 @@
 # BT-Spider
 
-Personal BT download tool with multi-source search, ebook download, and Telegram Bot.
+个人 BT 下载工具，支持多源搜索、电子书下载和 Telegram Bot。
 
-## Features
+## 功能
 
-- Magnet link download with real-time progress (speed, ETA, peers)
-- 6 search sources aggregated: ApiBay, BTDigg, BT4G, YTS, EZTV, Nyaa
-- Concurrent search across all sources, auto-dedup by info_hash
-- Ebook search & download via Z-Library (zlib CLI)
-- Telegram Bot: remote search, download, status, cancel
-- Public tracker list auto-refresh (24h)
-- Proxy support (HTTP_PROXY / HTTPS_PROXY)
-- User permission control (Telegram whitelist)
+- 磁力链接下载，实时显示进度（速度、预计时间、Peer 数）
+- 聚合 6 个搜索源：ApiBay、BTDigg、BT4G、YTS、EZTV、Nyaa
+- 并发搜索所有源，自动按 info_hash 去重
+- 电子书搜索和下载（通过 Z-Library / zlib CLI）
+- Telegram Bot：远程搜索、下载、查看状态、取消任务
+- 公共 Tracker 列表自动刷新（24 小时）
+- 代理支持（HTTP_PROXY / HTTPS_PROXY）
+- 用户权限控制（Telegram 白名单）
 
-## Quick Start
+## 快速开始
 
-### Build
+### 编译
 
 ```bash
 go build -o bt-spider .
 ```
 
-### CLI Mode
+### CLI 模式
 
 ```bash
-# Default download dir: ~/Downloads/BT-Spider/
+# 默认下载目录：~/Downloads/BT-Spider/
 ./bt-spider
 
-# Custom download dir
+# 自定义下载目录
 ./bt-spider /path/to/download
 ```
 
-Interactive commands:
+交互命令：
 
 ```
-bt> search matrix          # Search torrents
-bt> 1                      # Download result #1
-bt> magnet:?xt=urn:btih:...  # Download magnet link
-bt> book 三毛 撒哈拉的故事    # Search ebooks
-bt> quit                   # Exit
+bt> search matrix          # 搜索种子
+bt> 1                      # 下载第 1 条结果
+bt> magnet:?xt=urn:btih:...  # 下载磁力链接
+bt> book 三毛 撒哈拉的故事    # 搜索电子书
+bt> quit                   # 退出
 ```
 
-### Bot Mode
+### Bot 模式
 
 ```bash
-# Via config file
+# 通过配置文件
 cp config.example.json config.json
-# Edit config.json, set telegram_bot_token
+# 编辑 config.json，设置 telegram_bot_token
 ./bt-spider --bot
 
-# Or via environment variable
-export BT_TELEGRAM_BOT_TOKEN="your-token"
+# 或通过环境变量
+export BT_TELEGRAM_BOT_TOKEN="***"
 ./bt-spider --bot
 ```
 
-Bot commands:
+Bot 命令：
 
-| Command | Description |
-|---------|-------------|
-| `/search <keyword>` | Search torrents |
-| `/s <keyword>` | Search (short) |
-| `/status` | Download status |
-| `/cancel` | Cancel downloads |
-| `/help` | Help |
+| 命令 | 说明 |
+|------|------|
+| `/search <关键词>` | 搜索种子 |
+| `/s <关键词>` | 搜索（简写） |
+| `/status` | 查看下载状态 |
+| `/cancel` | 取消下载 |
+| `/help` | 帮助 |
 
-Send keywords directly to search, send magnet links to download.
+直接发送关键词即可搜索，发送磁力链接即可下载。
 
-### Proxy
+### 代理
 
 ```bash
 export HTTPS_PROXY=http://127.0.0.1:7890
@@ -74,83 +74,83 @@ export HTTP_PROXY=http://127.0.0.1:7890
 ./bt-spider
 ```
 
-## Configuration
+## 配置
 
-See [config.example.json](config.example.json):
+参见 [config.example.json](config.example.json)：
 
-| Field | Default | Description |
-|-------|---------|-------------|
-| `download_dir` | `~/Downloads/BT-Spider/` | Download directory |
-| `listen_addr` | `:6881` | BT listen address |
-| `max_conns` | `80` | Max connections per torrent |
-| `seed` | `false` | Seed after download |
-| `enable_tracker_list` | `true` | Auto-fetch public trackers |
-| `telegram_bot_token` | `""` | Telegram Bot token |
-| `allowed_user_ids` | `[]` | Telegram user ID whitelist (empty = no restriction) |
+| 字段 | 默认值 | 说明 |
+|------|--------|------|
+| `download_dir` | `~/Downloads/BT-Spider/` | 下载目录 |
+| `listen_addr` | `:6881` | BT 监听地址 |
+| `max_conns` | `80` | 每个种子最大连接数 |
+| `seed` | `false` | 下载完成后是否做种 |
+| `enable_tracker_list` | `true` | 自动获取公共 Tracker 列表 |
+| `telegram_bot_token` | `""` | Telegram Bot Token |
+| `allowed_user_ids` | `[]` | Telegram 用户 ID 白名单（空 = 不限制） |
 
-## Search Sources
+## 搜索源
 
-| Source | Type | Interface | Notes |
-|--------|------|-----------|-------|
-| ApiBay (TPB) | General | JSON API | Auto-filters irrelevant results |
-| BTDigg | General (DHT) | HTML scraping | No exact seed count |
-| BT4G | General | RSS | Cloudflare protected |
-| YTS | Movies | JSON API | High quality movie torrents |
-| EZTV | TV Shows | JSON API | Client-side keyword filter |
-| Nyaa | Anime | RSS | Japanese/anime content |
+| 来源 | 类型 | 接口 | 备注 |
+|------|------|------|------|
+| ApiBay (TPB) | 综合 | JSON API | 自动过滤无关结果 |
+| BTDigg | 综合 (DHT) | HTML 爬取 | 无精确做种数 |
+| BT4G | 综合 | RSS | 有 Cloudflare 保护 |
+| YTS | 电影 | JSON API | 高质量电影种子 |
+| EZTV | 剧集 | JSON API | 客户端关键词过滤 |
+| Nyaa | 动漫 | RSS | 日本 / 动漫内容 |
 
-## Ebook Download
+## 电子书下载
 
-Requires [heartleo/zlib](https://github.com/heartleo/zlib) CLI:
+需要安装 [heartleo/zlib](https://github.com/heartleo/zlib) CLI：
 
 ```bash
-# Install
+# 安装
 GOPATH=/tmp/gopath go install github.com/heartleo/zlib/cmd/zlib@latest
 cp /tmp/gopath/bin/zlib ~/bin/zlib
 
-# Login (requires proxy)
+# 登录（需要代理）
 HTTPS_PROXY=http://127.0.0.1:7890 ~/bin/zlib login --email your@email.com --password yourpass
 ```
 
-Ebooks are saved to `~/Documents/Books/` by default.
+电子书默认保存到 `~/Documents/Books/`。
 
-## Project Structure
+## 项目结构
 
 ```
 .
-├── main.go                # CLI entry point, interactive REPL, bot startup
+├── main.go                # CLI 入口，交互式 REPL，Bot 启动
 ├── config/
-│   └── config.go          # Configuration loading, defaults, env overrides
+│   └── config.go          # 配置加载、默认值、环境变量覆盖
 ├── engine/
-│   ├── engine.go          # BT download engine (sync download with progress)
-│   ├── download.go        # Async download task (for bot mode)
-│   └── trackers.go        # Public tracker list auto-refresh (24h)
+│   ├── engine.go          # BT 下载引擎（同步下载 + 进度显示）
+│   ├── download.go        # 异步下载任务（Bot 模式用）
+│   └── trackers.go        # 公共 Tracker 列表自动刷新（24h）
 ├── search/
-│   ├── search.go          # Provider interface, concurrent search, dedup, DefaultProviders()
-│   ├── apibay.go          # ThePirateBay provider (JSON API)
-│   ├── btdig.go           # BTDigg provider (HTML scraping)
-│   ├── bt4g.go            # BT4G provider (RSS)
-│   ├── yts.go             # YTS provider (JSON API, movies)
-│   ├── eztv.go            # EZTV provider (JSON API, TV shows)
-│   ├── nyaa.go            # Nyaa provider (RSS, anime)
-│   ├── book.go            # BookProvider interface, SearchBooks aggregation
-│   ├── zlib.go            # Z-Library ebook search/download (via zlib CLI)
-│   ├── zlibrary.go        # Z-Library web search links
-│   └── annasarchive.go    # Anna's Archive web search links
+│   ├── search.go          # Provider 接口、并发搜索、去重、DefaultProviders()
+│   ├── apibay.go          # ThePirateBay（JSON API）
+│   ├── btdig.go           # BTDigg（HTML 爬取）
+│   ├── bt4g.go            # BT4G（RSS）
+│   ├── yts.go             # YTS（JSON API，电影）
+│   ├── eztv.go            # EZTV（JSON API，剧集）
+│   ├── nyaa.go            # Nyaa（RSS，动漫）
+│   ├── book.go            # BookProvider 接口、SearchBooks 聚合
+│   ├── zlib.go            # Z-Library 电子书搜索 / 下载（通过 zlib CLI）
+│   ├── zlibrary.go        # Z-Library 网页搜索链接
+│   └── annasarchive.go    # Anna's Archive 网页搜索链接
 ├── bot/
-│   └── bot.go             # Telegram Bot (search, download, progress, file send)
+│   └── bot.go             # Telegram Bot（搜索、下载、进度、文件发送）
 ├── pkg/
 │   ├── utils/
-│   │   └── format.go      # FormatBytes, FormatDuration, ProgressBar, Truncate
+│   │   └── format.go      # FormatBytes、FormatDuration、ProgressBar、Truncate
 │   └── httputil/
-│       └── client.go      # Shared HTTP client factory (proxy, UA, timeout)
+│       └── client.go      # 共享 HTTP 客户端工厂（代理、UA、超时）
 ├── config.example.json
 ├── .gitignore
 ├── LICENSE
 └── README.md
 ```
 
-## Architecture
+## 架构
 
 ```
 ┌─────────┐     ┌─────────┐
@@ -162,28 +162,28 @@ Ebooks are saved to `~/Documents/Books/` by default.
      │               │
      ▼               ▼
 ┌─────────────────────────┐
-│     search (Provider)   │  Concurrent search, dedup, sort
+│     search (Provider)   │  并发搜索、去重、排序
 │  ApiBay│BtDig│BT4G│...  │
 └────────────┬────────────┘
              │
              ▼
 ┌─────────────────────────┐
-│     engine (Engine)     │  Torrent download, progress, trackers
+│     engine (Engine)     │  种子下载、进度显示、Tracker 管理
 │  AddMagnet│AddMagnetAsync│
 └────────────┬────────────┘
              │
              ▼
 ┌─────────────────────────┐
-│   pkg/httputil + utils  │  Shared HTTP client, formatting
+│   pkg/httputil + utils  │  共享 HTTP 客户端、格式化工具
 └─────────────────────────┘
 ```
 
-## Tech Stack
+## 技术栈
 
-- [anacrolix/torrent](https://github.com/anacrolix/torrent) - BT protocol
+- [anacrolix/torrent](https://github.com/anacrolix/torrent) - BT 协议
 - [telegram-bot-api](https://github.com/go-telegram-bot-api/telegram-bot-api) - Telegram Bot SDK
 - [heartleo/zlib](https://github.com/heartleo/zlib) - Z-Library CLI
 
-## License
+## 许可证
 
 MIT
