@@ -3,6 +3,8 @@ package bot
 import (
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -274,6 +276,9 @@ func (b *Bot) trackProgress(chatID int64, msgID int, dl *engine.Download, name s
 			text := fmt.Sprintf("✅ 下载完成!\n\n📦 %s\n📁 %s\n💾 %s",
 				name, formatBytes(total), b.cfg.DownloadDir)
 			b.editMessage(chatID, msgID, text)
+
+			// 发送文件到 Telegram
+			b.sendDownloadedFiles(chatID, dl)
 			return
 		}
 
@@ -459,6 +464,40 @@ func progressBar(percent float64, width int) string {
 		}
 	}
 	return string(bar)
+}
+
+// sendDownloadedFiles 将下载完成的文件发送到 Telegram
+func (b *Bot) sendDownloadedFiles(chatID int64, dl *engine.Download) {
+	// Telegram Bot API 文件大小限制: 50MB
+	const maxFileSize int64 = 50 * 1024 * 1024
+
+	files := dl.Torrent.Files()
+	for _, f := range files {
+		filePath := filepath.Join(b.cfg.DownloadDir, f.Path())
+
+		info, err := os.Stat(filePath)
+		if err != nil {
+			log.Printf("无法获取文件信息 %s: %v", filePath, err)
+			continue
+		}
+
+		if info.IsDir() {
+			continue
+		}
+
+		if info.Size() > maxFileSize {
+			b.reply(chatID, fmt.Sprintf("⚠️ 文件过大无法发送 (%.1f MB > 50 MB):\n%s",
+				float64(info.Size())/(1024*1024), f.Path()))
+			continue
+		}
+
+		doc := tgbotapi.NewDocument(chatID, tgbotapi.FilePath(filePath))
+		doc.Caption = f.Path()
+		if _, err := b.api.Send(doc); err != nil {
+			log.Printf("发送文件失败 %s: %v", filePath, err)
+			b.reply(chatID, fmt.Sprintf("❌ 发送文件失败: %s\n%v", f.Path(), err))
+		}
+	}
 }
 
 func formatBytes(b int64) string {
