@@ -2,7 +2,10 @@ module github.com/huangke/bt-spider
 
 go 1.26.1
 
-require github.com/anacrolix/torrent v1.61.0
+require (
+	github.com/anacrolix/torrent v1.61.0
+	github.com/go-telegram-bot-api/telegram-bot-api/v5 v5.5.1
+)
 
 require (
 	github.com/RoaringBitmap/roaring v1.2.3 // indirect
