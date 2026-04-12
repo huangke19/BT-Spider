@@ -37,6 +37,9 @@ bt> 1
 
 # 也可直接粘贴磁力链接下载
 bt> magnet:?xt=urn:btih:xxxxx...
+
+# 搜索并下载电子书（via Z-Library）
+bt> book 三毛 撒哈拉的故事
 ```
 
 ### 代理支持
@@ -122,6 +125,31 @@ export BT_TELEGRAM_BOT_TOKEN="***"
 │   └── nyaa.go          # Nyaa
 ├── bot/bot.go           # Telegram Bot
 └── config.example.json  # 配置示例
+```
+
+## 电子书下载
+
+通过 [heartleo/zlib](https://github.com/heartleo/zlib) CLI 接入 Z-Library，支持搜索和下载电子书（EPUB / MOBI / AZW3 等格式）。
+
+```bash
+# 搜索并下载（输入序号选择结果）
+bt> book 三毛 撒哈拉的故事
+bt> book 余华 活着
+```
+
+下载文件保存至 `~/Downloads/BT-Spider/`。
+
+**依赖配置：**
+- 安装 zlib CLI 并登录 Z-Library 账号（需科学上网）
+- 运行时需设置代理：`export HTTPS_PROXY=http://127.0.0.1:7890`
+
+项目结构中对应新增文件：
+
+```
+search/
+├── book.go          # book 命令入口与 zlib 调用封装
+├── zlibrary.go      # Z-Library 搜索/下载逻辑（已弃用，改用 zlib CLI）
+└── annasarchive.go  # Anna's Archive（国内 SSL 问题，暂停使用）
 ```
 
 ## 技术栈
