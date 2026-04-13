@@ -32,6 +32,7 @@ func DefaultProviders() []Provider {
 		NewYTS(),
 		NewEZTV(),
 		NewNyaa(),
+		NewLeet337x(),
 	}
 }
 
@@ -62,6 +63,9 @@ func Search(keyword string, providers []Provider) ([]Result, error) {
 	if len(allResults) == 0 && lastErr != nil {
 		return nil, fmt.Errorf("所有搜索源失败: %w", lastErr)
 	}
+
+	// 关键词相关性过滤：名字必须包含至少一个关键词（过滤无关结果）
+	allResults = filterByKeyword(allResults, keyword)
 
 	// 按 info_hash 去重
 	allResults = dedup(allResults)
@@ -101,6 +105,48 @@ func dedup(results []Result) []Result {
 			seen[hash] = len(out)
 			out = append(out, r)
 		}
+	}
+	return out
+}
+
+// filterByKeyword 过滤掉名字里没有足够关键词的结果
+// 策略：关键词里至少一半的词（长度>=3）必须出现在标题中
+func filterByKeyword(results []Result, keyword string) []Result {
+	words := strings.Fields(strings.ToLower(keyword))
+	// 只保留长度>=3的词
+	var meaningful []string
+	for _, w := range words {
+		if len(w) >= 3 {
+			meaningful = append(meaningful, w)
+		}
+	}
+	if len(meaningful) == 0 {
+		return results
+	}
+
+	// 至少需要匹配的词数：超过一半
+	minMatch := len(meaningful)/2 + 1
+	if minMatch > len(meaningful) {
+		minMatch = len(meaningful)
+	}
+
+	var out []Result
+	for _, r := range results {
+		nameLower := strings.ToLower(r.Name)
+		matched := 0
+		for _, w := range meaningful {
+			if strings.Contains(nameLower, w) {
+				matched++
+			}
+		}
+		if matched >= minMatch {
+			out = append(out, r)
+		}
+	}
+
+	// 如果过滤后结果为空，退回原始结果
+	if len(out) == 0 {
+		return results
 	}
 	return out
 }

@@ -61,9 +61,9 @@ func (e *Engine) AddMagnet(magnet string) error {
 
 	select {
 	case <-t.GotInfo():
-	case <-time.After(2 * time.Minute):
+	case <-time.After(30 * time.Second):
 		t.Drop()
-		return fmt.Errorf("获取元数据超时（2分钟）")
+		return fmt.Errorf("获取元数据超时（30秒），该种子可能无有效 peer，请换下一个")
 	}
 
 	info := t.Info()

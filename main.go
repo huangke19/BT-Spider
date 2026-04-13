@@ -14,7 +14,7 @@ import (
 	"github.com/huangke/bt-spider/search"
 )
 
-const version = "0.4.0"
+const version = "0.5.0"
 
 func main() {
 	fmt.Printf("🕷  BT-Spider v%s\n", version)
