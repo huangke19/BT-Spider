@@ -1,9 +1,0 @@
-{
-  "download_dir": "",
-  "listen_addr": ":6881",
-  "max_conns": 80,
-  "seed": false,
-  "enable_tracker_list": true,
-  "telegram_bot_token": "",
-  "allowed_user_ids": []
-}
