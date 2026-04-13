@@ -184,6 +184,13 @@ HTTPS_PROXY=http://127.0.0.1:7890 ~/bin/zlib login --email your@email.com --pass
 - [telegram-bot-api](https://github.com/go-telegram-bot-api/telegram-bot-api) - Telegram Bot SDK
 - [heartleo/zlib](https://github.com/heartleo/zlib) - Z-Library CLI
 
+## 相关项目
+
+| 项目 | 说明 |
+|------|------|
+| [BT-Books](https://github.com/huangke19/BT-Books) | 从本项目拆分，独立的电子书下载工具（Z-Library） |
+| [BT-Music](https://github.com/huangke19/BT-Music) | 从本项目拆分，独立的音乐下载工具（B站 yt-dlp + BT搜索） |
+
 ## 许可证
 
 MIT
