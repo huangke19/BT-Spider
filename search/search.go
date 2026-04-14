@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"unicode/utf8"
 )
 
 // Result 搜索结果
@@ -109,33 +110,81 @@ func dedup(results []Result) []Result {
 	return out
 }
 
-// filterByKeyword 过滤掉名字里没有足够关键词的结果
-// 策略：关键词里至少一半的词（长度>=3）必须出现在标题中
-func filterByKeyword(results []Result, keyword string) []Result {
-	words := strings.Fields(strings.ToLower(keyword))
-	// 只保留长度>=3的词
-	var meaningful []string
-	for _, w := range words {
-		if len(w) >= 3 {
-			meaningful = append(meaningful, w)
+// isCJK 判断字符是否为 CJK（中日韩）字符
+func isCJK(r rune) bool {
+	switch {
+	case r >= 0x4E00 && r <= 0x9FFF: // CJK 统一汉字
+		return true
+	case r >= 0x3400 && r <= 0x4DBF: // CJK 扩展 A
+		return true
+	case r >= 0x3040 && r <= 0x309F: // 平假名
+		return true
+	case r >= 0x30A0 && r <= 0x30FF: // 片假名
+		return true
+	case r >= 0xAC00 && r <= 0xD7AF: // 谚文音节
+		return true
+	}
+	return false
+}
+
+// tokenize 按语言敏感方式把关键词拆分为 token：
+//   - 连续 CJK 字符：切成 bigram（如"谍影重重" → 谍影/影重/重重）；单字段单独成 token
+//   - 非 CJK（ASCII 等）：按空格分词，保留长度 ≥ 3 的词
+func tokenize(keyword string) []string {
+	keyword = strings.ToLower(keyword)
+	runes := []rune(keyword)
+	var tokens []string
+
+	i := 0
+	for i < len(runes) {
+		if isCJK(runes[i]) {
+			start := i
+			for i < len(runes) && isCJK(runes[i]) {
+				i++
+			}
+			seg := runes[start:i]
+			if len(seg) == 1 {
+				tokens = append(tokens, string(seg))
+			} else {
+				for j := 0; j+1 < len(seg); j++ {
+					tokens = append(tokens, string(seg[j:j+2]))
+				}
+			}
+		} else {
+			start := i
+			for i < len(runes) && !isCJK(runes[i]) {
+				i++
+			}
+			for _, w := range strings.Fields(string(runes[start:i])) {
+				if utf8.RuneCountInString(w) >= 3 {
+					tokens = append(tokens, w)
+				}
+			}
 		}
 	}
-	if len(meaningful) == 0 {
+	return tokens
+}
+
+// filterByKeyword 过滤掉名字里没有足够关键词的结果
+// 策略：把关键词拆成 token（CJK 用 bigram，ASCII 按空格分词），至少一半的 token 需出现在标题中
+func filterByKeyword(results []Result, keyword string) []Result {
+	tokens := tokenize(keyword)
+	if len(tokens) == 0 {
 		return results
 	}
 
-	// 至少需要匹配的词数：超过一半
-	minMatch := len(meaningful)/2 + 1
-	if minMatch > len(meaningful) {
-		minMatch = len(meaningful)
+	// 至少需要匹配的 token 数：超过一半
+	minMatch := len(tokens)/2 + 1
+	if minMatch > len(tokens) {
+		minMatch = len(tokens)
 	}
 
 	var out []Result
 	for _, r := range results {
 		nameLower := strings.ToLower(r.Name)
 		matched := 0
-		for _, w := range meaningful {
-			if strings.Contains(nameLower, w) {
+		for _, t := range tokens {
+			if strings.Contains(nameLower, t) {
 				matched++
 			}
 		}
@@ -144,7 +193,7 @@ func filterByKeyword(results []Result, keyword string) []Result {
 		}
 	}
 
-	// 如果过滤后结果为空，退回原始结果
+	// 过滤后为空才退回原始结果（保守兜底，防止过滤算法偏差吞掉所有结果）
 	if len(out) == 0 {
 		return results
 	}

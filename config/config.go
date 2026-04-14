@@ -19,7 +19,7 @@ func DefaultConfig() *Config {
 	home, _ := os.UserHomeDir()
 	return &Config{
 		DownloadDir:       filepath.Join(home, "Downloads", "BT-Spider"),
-		MaxResults:        20,
+		MaxResults:        100,
 		MaxConns:          80,
 		Seed:              false,
 		EnableTrackerList: true,

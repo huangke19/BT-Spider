@@ -3,17 +3,20 @@ package engine
 import (
 	"fmt"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/anacrolix/torrent"
 	"github.com/huangke/bt-spider/config"
-	"github.com/huangke/bt-spider/pkg/utils"
 )
 
 type Engine struct {
 	client   *torrent.Client
 	cfg      *config.Config
 	trackers *TrackerList
+
+	mu        sync.RWMutex
+	downloads []*Download
 }
 
 func New(cfg *config.Config) (*Engine, error) {
@@ -46,115 +49,68 @@ func New(cfg *config.Config) (*Engine, error) {
 	return eng, nil
 }
 
-// AddMagnet 添加磁力链接并开始下载（带进度显示）
-func (e *Engine) AddMagnet(magnet string) error {
-	t, err := e.client.AddMagnet(magnet)
-	if err != nil {
-		return fmt.Errorf("解析磁力链接失败: %w", err)
-	}
-
-	if e.trackers != nil {
-		t.AddTrackers(e.trackers.Get())
-	}
-
-	fmt.Println("⏳ 正在获取元数据...")
-
-	select {
-	case <-t.GotInfo():
-	case <-time.After(30 * time.Second):
-		t.Drop()
-		return fmt.Errorf("获取元数据超时（30秒），该种子可能无有效 peer，请换下一个")
-	}
-
-	info := t.Info()
-	fmt.Printf("📦 名称: %s\n", info.BestName())
-	fmt.Printf("📁 大小: %s\n", utils.FormatBytes(info.TotalLength()))
-	fmt.Printf("📂 文件数: %d\n", len(info.UpvertedFiles()))
-	fmt.Printf("💾 保存到: %s\n", e.cfg.DownloadDir)
-	fmt.Println()
-
-	t.DownloadAll()
-	e.showProgress(t)
-
-	return nil
+// Config 返回 engine 配置（UI 用来显示下载目录等）
+func (e *Engine) Config() *config.Config {
+	return e.cfg
 }
 
-func (e *Engine) showProgress(t *torrent.Torrent) {
-	var prevCompleted int64
-	prevTime := time.Now()
-	type sample struct {
-		bytes int64
-		time  time.Time
+// registerDownload 把新任务加入注册表
+func (e *Engine) registerDownload(d *Download) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.downloads = append(e.downloads, d)
+}
+
+// ListDownloads 返回所有下载任务的快照，按创建时间排序
+func (e *Engine) ListDownloads() []DownloadSnapshot {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	out := make([]DownloadSnapshot, 0, len(e.downloads))
+	for _, d := range e.downloads {
+		out = append(out, d.Snapshot())
 	}
-	samples := make([]sample, 0, 10)
+	return out
+}
 
-	for {
-		stats := t.Stats()
-		total := t.Info().TotalLength()
-		completed := t.BytesCompleted()
+// RemoveDownload 按 ID 取消并从列表中移除
+func (e *Engine) RemoveDownload(id string) bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	for i, d := range e.downloads {
+		if d.ID == id {
+			d.Cancel()
+			e.downloads = append(e.downloads[:i], e.downloads[i+1:]...)
+			return true
+		}
+	}
+	return false
+}
 
-		if total == 0 {
-			time.Sleep(time.Second)
+// ClearFinished 清理已完成/失败/取消的任务
+func (e *Engine) ClearFinished() int {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	kept := e.downloads[:0]
+	removed := 0
+	for _, d := range e.downloads {
+		s := d.State()
+		if s == StateDone || s == StateFailed || s == StateCanceled {
+			removed++
 			continue
 		}
-
-		now := time.Now()
-		elapsed := now.Sub(prevTime).Seconds()
-
-		var speed float64
-		if elapsed > 0 {
-			speed = float64(completed-prevCompleted) / elapsed
-		}
-
-		samples = append(samples, sample{bytes: completed, time: now})
-		if len(samples) > 10 {
-			samples = samples[1:]
-		}
-
-		var avgSpeed float64
-		if len(samples) >= 2 {
-			first := samples[0]
-			last := samples[len(samples)-1]
-			dt := last.time.Sub(first.time).Seconds()
-			if dt > 0 {
-				avgSpeed = float64(last.bytes-first.bytes) / dt
-			}
-		}
-		if avgSpeed <= 0 {
-			avgSpeed = speed
-		}
-
-		prevCompleted = completed
-		prevTime = now
-
-		remaining := total - completed
-		eta := "计算中..."
-		if avgSpeed > 0 && remaining > 0 {
-			secs := float64(remaining) / avgSpeed
-			eta = utils.FormatDuration(time.Duration(secs) * time.Second)
-		}
-
-		percent := float64(completed) / float64(total) * 100
-		bar := utils.ProgressBar(percent, 30)
-
-		fmt.Printf("\r\033[K%s %.1f%% | %s/%s | %s/s | ETA %s | ↓ %d peers",
-			bar, percent,
-			utils.FormatBytes(completed), utils.FormatBytes(total),
-			utils.FormatBytes(int64(avgSpeed)),
-			eta,
-			stats.ActivePeers,
-		)
-
-		if completed >= total {
-			fmt.Printf("\n\n✅ 下载完成！\n")
-			return
-		}
-
-		time.Sleep(time.Second)
+		kept = append(kept, d)
 	}
+	e.downloads = kept
+	return removed
 }
 
 func (e *Engine) Close() {
+	e.mu.Lock()
+	for _, d := range e.downloads {
+		d.Cancel()
+	}
+	e.mu.Unlock()
+
 	if e.trackers != nil {
 		e.trackers.Stop()
 	}
