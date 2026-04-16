@@ -32,7 +32,6 @@ func (t *TorrentKitty) Name() string {
 var (
 	tkRowPattern    = regexp.MustCompile(`(?s)<tr[^>]*>(.+?)</tr>`)
 	tkNamePattern   = regexp.MustCompile(`<td class="name">([^<]+)</td>`)
-	tkSizePattern   = regexp.MustCompile(`<td class="size">([^<]+)</td>`)
 	tkMagnetPattern = regexp.MustCompile(`href="(magnet:\?xt=urn:btih:[^"]+)"`)
 )
 
@@ -69,7 +68,6 @@ func (t *TorrentKitty) Search(keyword string, page int) ([]Result, error) {
 		cell := row[1]
 
 		mName := tkNamePattern.FindStringSubmatch(cell)
-		mSize := tkSizePattern.FindStringSubmatch(cell)
 		mMagnet := tkMagnetPattern.FindStringSubmatch(cell)
 
 		if mName == nil || mMagnet == nil {
@@ -78,10 +76,8 @@ func (t *TorrentKitty) Search(keyword string, page int) ([]Result, error) {
 
 		name := strings.TrimSpace(mName[1])
 		magnet := strings.TrimSpace(mMagnet[1])
+		// TorrentKitty 只提供 .torrent 元数据文件本身的大小，不是内容大小，不可信，置为未知。
 		size := "未知"
-		if mSize != nil {
-			size = strings.TrimSpace(mSize[1])
-		}
 
 		infoHash := extractHashFromMagnet(magnet)
 		if infoHash == "" {
