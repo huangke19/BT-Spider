@@ -5,7 +5,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/anacrolix/torrent"
 	"github.com/huangke/bt-spider/config"
 	"github.com/huangke/bt-spider/pkg/logger"
 )
@@ -44,7 +43,7 @@ func (s DownloadState) String() string {
 type Download struct {
 	ID        string
 	Magnet    string
-	Torrent   *torrent.Torrent
+	handle    TorrentHandle
 	CreatedAt time.Time
 
 	mu        sync.Mutex
@@ -115,11 +114,10 @@ func (d *Download) Snapshot() DownloadSnapshot {
 		SeedElapsed: d.seedElapsed,
 	}
 
-	if d.Torrent != nil && (d.state == StateDownloading || d.state == StateSeeding || d.state == StateDone) {
-		snap.Completed = d.Torrent.BytesCompleted()
-		stats := d.Torrent.Stats()
-		snap.Peers = stats.ActivePeers
-		snap.Uploaded = stats.BytesWrittenData.Int64()
+	if d.handle != nil && (d.state == StateDownloading || d.state == StateSeeding || d.state == StateDone) {
+		snap.Completed = d.handle.BytesCompleted()
+		snap.Peers = d.handle.ActivePeers()
+		snap.Uploaded = d.handle.BytesUploaded()
 	}
 
 	// EWMA 速度（alpha=0.3）
@@ -230,8 +228,8 @@ func (d *Download) Cancel() {
 	d.mu.Unlock()
 	logger.Info("download canceled", "id", d.ID, "name", d.name)
 	d.emitEvent(EventCanceled, "")
-	if d.Torrent != nil {
-		d.Torrent.Drop()
+	if d.handle != nil {
+		d.handle.Drop()
 	}
 }
 
@@ -261,7 +259,7 @@ func (e *Engine) AddMagnetWithPolicyAsync(magnet string, policy DownloadPolicy) 
 	dl := &Download{
 		ID:        t.InfoHash().HexString(),
 		Magnet:    magnet,
-		Torrent:   t,
+		handle:    &realHandle{t},
 		CreatedAt: time.Now(),
 		name:      placeholder,
 		state:     StateWaitingMeta,
@@ -307,19 +305,18 @@ func (d *Download) watchLifecycle() {
 	for range ticker.C {
 		d.mu.Lock()
 		state := d.state
-		t := d.Torrent
+		h := d.handle
 		totalSize := d.totalSize
 		seedStartedAt := d.seedStartedAt
 		policy := d.policy
 		d.mu.Unlock()
 
-		if t == nil || state == StateCanceled || state == StateFailed || state == StateDone {
+		if h == nil || state == StateCanceled || state == StateFailed || state == StateDone {
 			return
 		}
 
-		completed := t.BytesCompleted()
-		stats := t.Stats()
-		uploaded := stats.BytesWrittenData.Int64()
+		completed := h.BytesCompleted()
+		uploaded := h.BytesUploaded()
 
 		if totalSize <= 0 || completed < totalSize {
 			continue
@@ -351,7 +348,7 @@ func (d *Download) watchLifecycle() {
 					"ratio", ratio, "limit", policy.SeedRatioLimit)
 				d.markDone()
 				d.emitEvent(EventSeedingStopped, fmt.Sprintf("ratio %.2f", ratio))
-				t.Drop()
+				h.Drop()
 				return
 			}
 		}
@@ -360,7 +357,7 @@ func (d *Download) watchLifecycle() {
 				"elapsed", time.Since(seedStartedAt).Round(time.Second))
 			d.markDone()
 			d.emitEvent(EventSeedingStopped, "时间限制")
-			t.Drop()
+			h.Drop()
 			return
 		}
 	}
