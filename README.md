@@ -52,11 +52,31 @@ TUI 界面会每 500ms 刷新，所有任务的进度条 / 速度 / peers / ETA 
 | TUI 命令 | 说明 |
 |----------|------|
 | `search <关键词>` | 搜索（异步，不阻塞输入） |
+| `movie <片名 [年份] [1080P]>` | 智能电影搜索：自动识别中英文别名、补全年份，结果严格按标题/分辨率/做种数过滤 |
+| `<片名 年份 1080P>` | 直接输入带年份和 1080P 的英文片名，触发严格电影搜索模式（同 `movie`） |
 | `<序号>` | 下载搜索结果中的对应条目 |
 | `magnet:?xt=...` | 直接添加磁力链接 |
 | `c <下载序号>` | 取消指定下载任务 |
 | `clear` | 清理已完成 / 失败 / 取消的任务 |
 | `q` / `quit` / `Ctrl+C` | 退出 |
+
+**电影搜索示例：**
+
+```
+bt> movie 美国队长第二部
+# → 已解析为: Captain America: The Winter Soldier 2014 1080P
+
+bt> movie Inception 2010 1080P
+# → 严格模式：只保留片名匹配、1080P、做种数最高的结果
+
+bt> Interstellar 2014 1080P
+# → 直接输入也会触发严格电影搜索
+```
+
+严格电影搜索（`movie` 命令或"英文片名 + 年份 + 1080P"格式）会：
+- 去掉标题中的冠词（The / A / An），避免漏匹配
+- 过滤掉 720P / 4K / 1080i 等非目标分辨率
+- 同时拉取做种数，按来源可信度 + 做种数 + 文件大小合理性综合排序
 
 > ⚠️ **TUI 需要真实终端（TTY）**。通过管道、AI 助手子进程、后台服务等非 TTY 环境调用会报错，请改用 Headless 模式。
 
@@ -225,6 +245,8 @@ export HTTPS_PROXY=http://127.0.0.1:7890
 │   └── trackers.go           # Tracker 列表自动更新
 ├── search/
 │   ├── search.go             # Provider 接口、并发搜索、CJK bigram 过滤
+│   ├── movie_resolver.go     # 电影自然语言输入解析（中英文别名、年份补全）
+│   ├── strict_movie.go       # 严格电影结果过滤与评分（分辨率/做种/文件大小）
 │   ├── filter_test.go        # 过滤器单元测试
 │   ├── apibay.go             # ThePirateBay（JSON API）
 │   ├── btdig.go              # BTDigg（HTML 爬取）

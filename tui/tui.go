@@ -77,7 +77,7 @@ type Model struct {
 // New 创建一个初始化好的 Model
 func New(eng *engine.Engine) Model {
 	ti := textinput.New()
-	ti.Placeholder = "search <关键词>  |  <序号>  |  magnet:...  |  c <序号> 取消  |  q 退出"
+	ti.Placeholder = "直接输入片名 / search <关键词> / <序号> / magnet:... / c <序号> / q"
 	ti.Prompt = "bt> "
 	ti.CharLimit = 4096
 	ti.Focus()
@@ -170,6 +170,18 @@ func (m Model) handleCommand() (tea.Model, tea.Cmd) {
 		m.isErr = false
 		return m, searchCmd(m.engine, keyword)
 
+	case strings.HasPrefix(lower, "movie "):
+		query := strings.TrimSpace(raw[6:])
+		if query == "" {
+			return m, statusCmd("请输入电影名称", true)
+		}
+		if resolved, ok := search.ResolveMovieSearchInput(query); ok {
+			m.status = resolved.Display + " ..."
+			m.isErr = false
+			return m, searchCmd(m.engine, resolved.Query)
+		}
+		return m, statusCmd("无法识别电影名，试试：movie Inception 2010 1080P", true)
+
 	case strings.HasPrefix(lower, "c "):
 		numStr := strings.TrimSpace(raw[2:])
 		num, err := strconv.Atoi(numStr)
@@ -192,7 +204,12 @@ func (m Model) handleCommand() (tea.Model, tea.Cmd) {
 		// 尝试解析为序号
 		num, err := strconv.Atoi(raw)
 		if err != nil {
-			return m, statusCmd("未知命令：search <关键词> / 序号 / magnet: / c <序号> / q", true)
+			if resolved, ok := search.ResolveMovieSearchInput(raw); ok {
+				m.status = resolved.Display + " ..."
+				m.isErr = false
+				return m, searchCmd(m.engine, resolved.Query)
+			}
+			return m, statusCmd("未知命令：search <关键词> / movie <片名> / 序号 / magnet: / c <序号> / q", true)
 		}
 		if num < 1 || num > len(m.results) {
 			return m, statusCmd("搜索结果序号超出范围", true)

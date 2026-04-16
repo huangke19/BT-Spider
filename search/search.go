@@ -52,6 +52,8 @@ func SearchWithTimeout(keyword string, providers []Provider, timeout time.Durati
 		timeout = DefaultSearchTimeout
 	}
 
+	strictQuery, strictMode := parseStrictMovieQuery(keyword)
+
 	type providerResult struct {
 		name    string
 		results []Result
@@ -82,7 +84,7 @@ func SearchWithTimeout(keyword string, providers []Provider, timeout time.Durati
 			}
 			allResults = append(allResults, pr.results...)
 		case <-timer.C:
-			results := finalizeResults(allResults, keyword)
+			results := finalizeResults(allResults, keyword, strictMode, strictQuery)
 			if len(results) > 0 {
 				return results, nil
 			}
@@ -90,7 +92,7 @@ func SearchWithTimeout(keyword string, providers []Provider, timeout time.Durati
 		}
 	}
 
-	results := finalizeResults(allResults, keyword)
+	results := finalizeResults(allResults, keyword, strictMode, strictQuery)
 	if len(results) > 0 {
 		return results, nil
 	}
@@ -100,7 +102,11 @@ func SearchWithTimeout(keyword string, providers []Provider, timeout time.Durati
 	return nil, nil
 }
 
-func finalizeResults(allResults []Result, keyword string) []Result {
+func finalizeResults(allResults []Result, keyword string, strictMode bool, strictQuery strictMovieQuery) []Result {
+	if strictMode {
+		return finalizeStrictMovieResults(allResults, strictQuery)
+	}
+
 	// 关键词相关性过滤：名字必须包含至少一个关键词（过滤无关结果）
 	allResults = filterByKeyword(allResults, keyword)
 
