@@ -2,8 +2,6 @@ package providers
 
 import (
 	"fmt"
-	"io"
-	"net/http"
 	"net/url"
 	"regexp"
 	"strings"
@@ -15,13 +13,13 @@ import (
 // TorrentKitty 基于 torrentkitty.tv 的搜索源，磁力聚合站
 type TorrentKitty struct {
 	baseURL string
-	client  *http.Client
+	client  *httputil.ResilientClient
 }
 
 func NewTorrentKitty() *TorrentKitty {
 	return &TorrentKitty{
 		baseURL: "https://www.torrentkitty.tv",
-		client:  httputil.NewClient(httputil.DefaultTimeout),
+		client:  httputil.NewResilientClient(),
 	}
 }
 
@@ -38,25 +36,9 @@ var (
 func (t *TorrentKitty) Search(keyword string, page int) ([]search.Result, error) {
 	searchURL := fmt.Sprintf("%s/search/%s", t.baseURL, url.PathEscape(keyword))
 
-	req, err := http.NewRequest(http.MethodGet, searchURL, nil)
+	body, err := t.client.Get(searchURL)
 	if err != nil {
-		return nil, fmt.Errorf("创建请求失败: %w", err)
-	}
-	req.Header.Set("User-Agent", httputil.DefaultUA)
-
-	resp, err := t.client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("请求失败: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("返回 %d", resp.StatusCode)
-	}
-
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
-	if err != nil {
-		return nil, fmt.Errorf("读取响应失败: %w", err)
+		return nil, err
 	}
 
 	html := string(body)

@@ -3,7 +3,6 @@ package query
 import (
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"net/url"
 	"sort"
 	"time"
@@ -11,7 +10,7 @@ import (
 	"github.com/huangke/bt-spider/pkg/httputil"
 )
 
-var tmdbClient = httputil.NewClient(5 * time.Second)
+var tmdbClient = httputil.NewResilientClient(httputil.WithTimeout(5 * time.Second))
 
 type tmdbSearchResponse struct {
 	Results []tmdbMovie `json:"results"`
@@ -31,25 +30,16 @@ func SearchTMDB(query, apiKey string) (movieMeta, bool) {
 		url.QueryEscape(query),
 	)
 
-	req, err := http.NewRequest(http.MethodGet, endpoint, nil)
+	body, err := tmdbClient.GetWithHeaders(endpoint, map[string]string{
+		"Authorization": "Bearer " + apiKey,
+		"Accept":        "application/json",
+	})
 	if err != nil {
-		return movieMeta{}, false
-	}
-	req.Header.Set("Authorization", "Bearer "+apiKey)
-	req.Header.Set("Accept", "application/json")
-
-	resp, err := tmdbClient.Do(req)
-	if err != nil {
-		return movieMeta{}, false
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
 		return movieMeta{}, false
 	}
 
 	var result tmdbSearchResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := json.Unmarshal(body, &result); err != nil {
 		return movieMeta{}, false
 	}
 	if len(result.Results) == 0 {

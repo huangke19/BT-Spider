@@ -3,8 +3,6 @@ package providers
 import (
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"net/url"
 
 	"github.com/huangke/bt-spider/pkg/httputil"
@@ -14,13 +12,13 @@ import (
 // YTS 基于 YTS JSON API 的搜索源（电影资源）
 type YTS struct {
 	baseURL string
-	client  *http.Client
+	client  *httputil.ResilientClient
 }
 
 func NewYTS() *YTS {
 	return &YTS{
 		baseURL: "https://yts.mx/api/v2",
-		client:  httputil.NewClient(httputil.DefaultTimeout),
+		client:  httputil.NewResilientClient(),
 	}
 }
 
@@ -57,25 +55,9 @@ func (y *YTS) Search(keyword string, page int) ([]search.Result, error) {
 	apiURL := fmt.Sprintf("%s/list_movies.json?query_term=%s&sort_by=seeds&order_by=desc&limit=50&page=%d",
 		y.baseURL, url.QueryEscape(keyword), page+1)
 
-	req, err := http.NewRequest(http.MethodGet, apiURL, nil)
+	body, err := y.client.Get(apiURL)
 	if err != nil {
-		return nil, fmt.Errorf("创建请求失败: %w", err)
-	}
-	req.Header.Set("User-Agent", httputil.DefaultUA)
-
-	resp, err := y.client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("请求失败: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("API 返回 %d", resp.StatusCode)
-	}
-
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
-	if err != nil {
-		return nil, fmt.Errorf("读取响应失败: %w", err)
+		return nil, err
 	}
 
 	var ytsResp ytsResponse

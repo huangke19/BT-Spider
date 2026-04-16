@@ -3,8 +3,6 @@ package providers
 import (
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
@@ -17,13 +15,13 @@ import (
 // EZTV 基于 EZTV JSON API 的搜索源（美剧资源）
 type EZTV struct {
 	baseURL string
-	client  *http.Client
+	client  *httputil.ResilientClient
 }
 
 func NewEZTV() *EZTV {
 	return &EZTV{
 		baseURL: "https://eztv.re/api",
-		client:  httputil.NewClient(httputil.DefaultTimeout),
+		client:  httputil.NewResilientClient(httputil.WithMaxBody(4 << 20)),
 	}
 }
 
@@ -51,25 +49,9 @@ type eztvTorrent struct {
 func (e *EZTV) Search(keyword string, page int) ([]search.Result, error) {
 	apiURL := fmt.Sprintf("%s/get-torrents?limit=100&page=%d", e.baseURL, page+1)
 
-	req, err := http.NewRequest(http.MethodGet, apiURL, nil)
+	body, err := e.client.Get(apiURL)
 	if err != nil {
-		return nil, fmt.Errorf("创建请求失败: %w", err)
-	}
-	req.Header.Set("User-Agent", httputil.DefaultUA)
-
-	resp, err := e.client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("请求失败: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("API 返回 %d", resp.StatusCode)
-	}
-
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
-	if err != nil {
-		return nil, fmt.Errorf("读取响应失败: %w", err)
+		return nil, err
 	}
 
 	var ezResp eztvResponse

@@ -3,8 +3,6 @@ package providers
 import (
 	"encoding/xml"
 	"fmt"
-	"io"
-	"net/http"
 	"net/url"
 	"regexp"
 	"strconv"
@@ -17,13 +15,13 @@ import (
 // Nyaa 基于 Nyaa.si RSS 的搜索源（动漫/日语资源）
 type Nyaa struct {
 	baseURL string
-	client  *http.Client
+	client  *httputil.ResilientClient
 }
 
 func NewNyaa() *Nyaa {
 	return &Nyaa{
 		baseURL: "https://nyaa.si",
-		client:  httputil.NewClient(httputil.DefaultTimeout),
+		client:  httputil.NewResilientClient(),
 	}
 }
 
@@ -56,25 +54,9 @@ func (n *Nyaa) Search(keyword string, page int) ([]search.Result, error) {
 	searchURL := fmt.Sprintf("%s/?page=rss&q=%s&s=seeders&o=desc",
 		n.baseURL, url.QueryEscape(keyword))
 
-	req, err := http.NewRequest(http.MethodGet, searchURL, nil)
+	body, err := n.client.Get(searchURL)
 	if err != nil {
-		return nil, fmt.Errorf("创建请求失败: %w", err)
-	}
-	req.Header.Set("User-Agent", httputil.DefaultUA)
-
-	resp, err := n.client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("请求失败: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("返回 %d", resp.StatusCode)
-	}
-
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
-	if err != nil {
-		return nil, fmt.Errorf("读取响应失败: %w", err)
+		return nil, err
 	}
 
 	var rss nyaaRSS

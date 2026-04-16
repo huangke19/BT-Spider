@@ -2,8 +2,6 @@ package providers
 
 import (
 	"fmt"
-	"io"
-	"net/http"
 	"net/url"
 	"regexp"
 	"strings"
@@ -17,11 +15,14 @@ import (
 const leet337BaseURL = "https://www.1337xx.to"
 
 type Leet337x struct {
-	client *http.Client
+	client *httputil.ResilientClient
 }
 
 func NewLeet337x() *Leet337x {
-	return &Leet337x{client: httputil.NewClient(15 * time.Second)}
+	return &Leet337x{client: httputil.NewResilientClient(
+		httputil.WithTimeout(15*time.Second),
+		httputil.WithUA("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"),
+	)}
 }
 
 func (l *Leet337x) Name() string { return "1337x" }
@@ -139,24 +140,9 @@ func (l *Leet337x) Search(keyword string, page int) ([]search.Result, error) {
 }
 
 func (l *Leet337x) get(u string) (string, error) {
-	req, err := http.NewRequest("GET", u, nil)
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
-
-	resp, err := l.client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("请求失败: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != 200 {
-		return "", fmt.Errorf("HTTP %d", resp.StatusCode)
-	}
-
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+	body, err := l.client.GetWithHeaders(u, map[string]string{
+		"Accept-Language": "en-US,en;q=0.9",
+	})
 	if err != nil {
 		return "", err
 	}

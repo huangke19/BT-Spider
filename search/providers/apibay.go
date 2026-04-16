@@ -3,8 +3,6 @@ package providers
 import (
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
@@ -18,13 +16,13 @@ import (
 // ApiBay 基于 ThePirateBay API 的搜索源
 type ApiBay struct {
 	baseURL string
-	client  *http.Client
+	client  *httputil.ResilientClient
 }
 
 func NewApiBay() *ApiBay {
 	return &ApiBay{
 		baseURL: "https://apibay.org",
-		client:  httputil.NewClient(httputil.DefaultTimeout),
+		client:  httputil.NewResilientClient(),
 	}
 }
 
@@ -45,25 +43,9 @@ type apiBayResult struct {
 func (a *ApiBay) Search(keyword string, page int) ([]search.Result, error) {
 	apiURL := fmt.Sprintf("%s/q.php?q=%s&cat=", a.baseURL, url.QueryEscape(keyword))
 
-	req, err := http.NewRequest(http.MethodGet, apiURL, nil)
+	body, err := a.client.Get(apiURL)
 	if err != nil {
-		return nil, fmt.Errorf("创建请求失败: %w", err)
-	}
-	req.Header.Set("User-Agent", httputil.DefaultUA)
-
-	resp, err := a.client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("请求失败: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("API 返回 %d", resp.StatusCode)
-	}
-
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
-	if err != nil {
-		return nil, fmt.Errorf("读取响应失败: %w", err)
+		return nil, err
 	}
 
 	var apiResults []apiBayResult
