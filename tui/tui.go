@@ -28,6 +28,12 @@ type searchDoneMsg struct {
 	err     error
 }
 
+type resolveDoneMsg struct {
+	resolved search.MovieResolution
+	ok       bool
+	original string
+}
+
 type statusMsg struct {
 	text  string
 	isErr bool
@@ -106,6 +112,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tickMsg:
 		m.snapshots = m.engine.ListDownloads()
 		return m, tickCmd()
+
+	case resolveDoneMsg:
+		if !msg.ok {
+			m.status = fmt.Sprintf("无法识别「%s」，请尝试 search <关键词>", msg.original)
+			m.isErr = true
+			return m, nil
+		}
+		m.status = msg.resolved.Display + " ..."
+		m.isErr = false
+		return m, searchCmd(m.engine, msg.resolved.Query)
 
 	case searchDoneMsg:
 		if msg.err != nil {
@@ -204,12 +220,16 @@ func (m Model) handleCommand() (tea.Model, tea.Cmd) {
 		// 尝试解析为序号
 		num, err := strconv.Atoi(raw)
 		if err != nil {
+			// 先试本地快速解析（无网络延迟）
 			if resolved, ok := search.ResolveMovieSearchInput(raw); ok {
 				m.status = resolved.Display + " ..."
 				m.isErr = false
 				return m, searchCmd(m.engine, resolved.Query)
 			}
-			return m, statusCmd("未知命令：search <关键词> / movie <片名> / 序号 / magnet: / c <序号> / q", true)
+			// 本地不认识 → 走 NLP pipeline（TMDB / Groq），显示 loading
+			m.status = "正在识别: " + raw + " ..."
+			m.isErr = false
+			return m, resolveCmd(m.engine, raw)
 		}
 		if num < 1 || num > len(m.results) {
 			return m, statusCmd("搜索结果序号超出范围", true)
@@ -248,6 +268,13 @@ func addMagnetCmd(eng *engine.Engine, magnet, name string) tea.Cmd {
 			hint = "新任务"
 		}
 		return statusMsg{text: "已加入下载队列: " + hint, isErr: false}
+	}
+}
+
+func resolveCmd(eng *engine.Engine, raw string) tea.Cmd {
+	return func() tea.Msg {
+		resolved, ok := search.NLPResolve(raw, eng.Config())
+		return resolveDoneMsg{resolved: resolved, ok: ok, original: raw}
 	}
 }
 

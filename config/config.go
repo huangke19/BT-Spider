@@ -18,6 +18,8 @@ type Config struct {
 	SeedRatioLimit    float64 `json:"seed_ratio_limit"`
 	SeedTimeLimit     string  `json:"seed_time_limit"`
 	EnableTrackerList bool    `json:"enable_tracker_list"`
+	TMDBApiKey        string  `json:"tmdb_api_key"`
+	GroqApiKey        string  `json:"groq_api_key"`
 }
 
 func DefaultConfig() *Config {
