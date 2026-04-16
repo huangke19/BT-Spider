@@ -1,4 +1,4 @@
-package search
+package pipeline
 
 import (
 	"encoding/binary"
@@ -12,7 +12,6 @@ import (
 	"time"
 )
 
-// 用于 scrape 的 UDP tracker（BEP 15）。这些 tracker 健康、响应快。
 var scrapeTrackers = []string{
 	"udp://tracker.opentrackr.org:1337",
 	"udp://open.demonii.com:1337",
@@ -20,18 +19,15 @@ var scrapeTrackers = []string{
 	"udp://open.stealth.si:80",
 }
 
-const scrapeBatchSize = 70 // BEP 15 限制一次最多 74 个 infohash
+const scrapeBatchSize = 70
 
 // ScrapeSeeders 查询多个 tracker 获取每个 infohash 的真实做种数。
-// 每个 hash 取所有 tracker 中最高的值（任何一个 tracker 有数据即可信）。
-// 返回 infohash（大写 hex）-> seeders。
 func ScrapeSeeders(infoHashes []string, timeout time.Duration) map[string]int {
 	result := make(map[string]int, len(infoHashes))
 	if len(infoHashes) == 0 {
 		return result
 	}
 
-	// 去重 + 解码 hex
 	seen := make(map[string]bool)
 	var hashBytes [][20]byte
 	var hashHex []string
@@ -63,7 +59,7 @@ func ScrapeSeeders(infoHashes []string, timeout time.Duration) map[string]int {
 				}
 				counts, err := scrapeUDP(tr, hashBytes[i:end], timeout)
 				if err != nil {
-					return // 该 tracker 该批次失败，尝试下一个 tracker
+					return
 				}
 				mu.Lock()
 				for j, c := range counts {
@@ -96,11 +92,10 @@ func scrapeUDP(trackerURL string, hashes [][20]byte, timeout time.Duration) ([]i
 	defer conn.Close()
 	conn.SetDeadline(time.Now().Add(timeout))
 
-	// --- connect 请求 ---
 	transID := rand.Uint32()
 	connReq := make([]byte, 16)
-	binary.BigEndian.PutUint64(connReq[0:], 0x41727101980) // 协议魔数
-	binary.BigEndian.PutUint32(connReq[8:], 0)             // action = connect
+	binary.BigEndian.PutUint64(connReq[0:], 0x41727101980)
+	binary.BigEndian.PutUint32(connReq[8:], 0)
 	binary.BigEndian.PutUint32(connReq[12:], transID)
 	if _, err := conn.Write(connReq); err != nil {
 		return nil, err
@@ -117,11 +112,10 @@ func scrapeUDP(trackerURL string, hashes [][20]byte, timeout time.Duration) ([]i
 	}
 	connectionID := binary.BigEndian.Uint64(connResp[8:16])
 
-	// --- scrape 请求 ---
 	transID2 := rand.Uint32()
 	scrapeReq := make([]byte, 16+20*len(hashes))
 	binary.BigEndian.PutUint64(scrapeReq[0:], connectionID)
-	binary.BigEndian.PutUint32(scrapeReq[8:], 2) // action = scrape
+	binary.BigEndian.PutUint32(scrapeReq[8:], 2)
 	binary.BigEndian.PutUint32(scrapeReq[12:], transID2)
 	for i, h := range hashes {
 		copy(scrapeReq[16+i*20:], h[:])

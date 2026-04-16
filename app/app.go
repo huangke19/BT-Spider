@@ -13,6 +13,9 @@ import (
 
 	"github.com/huangke/bt-spider/engine"
 	"github.com/huangke/bt-spider/search"
+	"github.com/huangke/bt-spider/search/pipeline"
+	"github.com/huangke/bt-spider/search/providers"
+	"github.com/huangke/bt-spider/search/query"
 )
 
 // sizeResolveTimeout 对搜索结果中 Size 未知的条目，用 DHT 补全的单次超时。
@@ -41,13 +44,13 @@ type App struct {
 }
 
 // New 构造 App。providers 传 nil 时使用 search.DefaultProviders()。
-func New(eng *engine.Engine, providers []search.Provider) *App {
-	if providers == nil {
-		providers = search.DefaultProviders()
+func New(eng *engine.Engine, provs []search.Provider) *App {
+	if provs == nil {
+		provs = providers.DefaultProviders()
 	}
 	return &App{
 		engine:    eng,
-		providers: providers,
+		providers: provs,
 	}
 }
 
@@ -55,7 +58,7 @@ func New(eng *engine.Engine, providers []search.Provider) *App {
 
 // Search 执行一次搜索，并对 Size 未知的结果自动通过 DHT 补全大小。
 func (a *App) Search(keyword string) ([]search.Result, error) {
-	results, err := search.Search(keyword, a.providers)
+	results, err := pipeline.Search(keyword, a.providers)
 	if err != nil {
 		return nil, err
 	}
@@ -67,12 +70,12 @@ func (a *App) Search(keyword string) ([]search.Result, error) {
 
 // ResolveLocal 使用本地别名 + 严格格式识别解析输入（同步，无网络）。
 func (a *App) ResolveLocal(input string) (search.MovieResolution, bool) {
-	return search.ResolveMovieSearchInput(input)
+	return query.ResolveMovieSearchInput(input)
 }
 
 // ResolveNLP 走完整 NLP pipeline（可能调用 TMDB / Groq，延迟 200~500ms）。
 func (a *App) ResolveNLP(input string) (search.MovieResolution, bool) {
-	return search.NLPResolve(input, a.engine.Config())
+	return query.NLPResolve(input, a.engine.Config())
 }
 
 // --- 下载 ---

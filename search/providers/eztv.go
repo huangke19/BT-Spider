@@ -1,4 +1,4 @@
-package search
+package providers
 
 import (
 	"encoding/json"
@@ -11,6 +11,7 @@ import (
 
 	"github.com/huangke/bt-spider/pkg/httputil"
 	"github.com/huangke/bt-spider/pkg/utils"
+	"github.com/huangke/bt-spider/search"
 )
 
 // EZTV 基于 EZTV JSON API 的搜索源（美剧资源）
@@ -31,25 +32,23 @@ func (e *EZTV) Name() string {
 }
 
 type eztvResponse struct {
-	TorrentsCount int            `json:"torrents_count"`
-	Limit         int            `json:"limit"`
-	Page          int            `json:"page"`
-	Torrents      []eztvTorrent  `json:"torrents"`
+	TorrentsCount int           `json:"torrents_count"`
+	Limit         int           `json:"limit"`
+	Page          int           `json:"page"`
+	Torrents      []eztvTorrent `json:"torrents"`
 }
 
 type eztvTorrent struct {
-	Hash        string `json:"hash"`
-	Filename    string `json:"filename"`
-	Title       string `json:"title"`
-	SizeBytes   string `json:"size_bytes"`
-	Seeds       int    `json:"seeds"`
-	Peers       int    `json:"peers"`
-	MagnetURL   string `json:"magnet_url"`
+	Hash      string `json:"hash"`
+	Filename  string `json:"filename"`
+	Title     string `json:"title"`
+	SizeBytes string `json:"size_bytes"`
+	Seeds     int    `json:"seeds"`
+	Peers     int    `json:"peers"`
+	MagnetURL string `json:"magnet_url"`
 }
 
-func (e *EZTV) Search(keyword string, page int) ([]Result, error) {
-	// EZTV API 不支持关键词搜索，只支持 imdb_id 查询
-	// 使用 get-torrents 接口，客户端侧过滤
+func (e *EZTV) Search(keyword string, page int) ([]search.Result, error) {
 	apiURL := fmt.Sprintf("%s/get-torrents?limit=100&page=%d", e.baseURL, page+1)
 
 	req, err := http.NewRequest(http.MethodGet, apiURL, nil)
@@ -78,11 +77,10 @@ func (e *EZTV) Search(keyword string, page int) ([]Result, error) {
 		return nil, fmt.Errorf("解析响应失败: %w", err)
 	}
 
-	keywordLower := normalize(keyword)
-	var results []Result
+	keywordLower := eztvNormalize(keyword)
+	var results []search.Result
 	for _, t := range ezResp.Torrents {
-		// 客户端侧关键词过滤
-		if !matchKeyword(t.Title, keywordLower) && !matchKeyword(t.Filename, keywordLower) {
+		if !eztvMatchKeyword(t.Title, keywordLower) && !eztvMatchKeyword(t.Filename, keywordLower) {
 			continue
 		}
 
@@ -94,9 +92,9 @@ func (e *EZTV) Search(keyword string, page int) ([]Result, error) {
 			continue
 		}
 
-		sizeBytes, _ := parseInt64(t.SizeBytes)
+		sizeBytes, _ := strconv.ParseInt(t.SizeBytes, 10, 64)
 
-		result := Result{
+		result := search.Result{
 			Name:     name,
 			Size:     utils.FormatBytes(sizeBytes),
 			Seeders:  t.Seeds,
@@ -107,7 +105,7 @@ func (e *EZTV) Search(keyword string, page int) ([]Result, error) {
 		if t.MagnetURL != "" {
 			result.Magnet = t.MagnetURL
 		} else {
-			result.Magnet = BuildMagnet(t.Hash, url.QueryEscape(name))
+			result.Magnet = search.BuildMagnet(t.Hash, url.QueryEscape(name))
 		}
 
 		results = append(results, result)
@@ -116,17 +114,10 @@ func (e *EZTV) Search(keyword string, page int) ([]Result, error) {
 	return results, nil
 }
 
-func normalize(s string) string {
+func eztvNormalize(s string) string {
 	return strings.ToLower(strings.TrimSpace(s))
 }
 
-func matchKeyword(text, keyword string) bool {
+func eztvMatchKeyword(text, keyword string) bool {
 	return strings.Contains(strings.ToLower(text), keyword)
-}
-
-func parseInt64(s string) (int64, error) {
-	if s == "" {
-		return 0, nil
-	}
-	return strconv.ParseInt(s, 10, 64)
 }

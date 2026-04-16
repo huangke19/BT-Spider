@@ -1,4 +1,4 @@
-package search
+package providers
 
 import (
 	"fmt"
@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/huangke/bt-spider/pkg/httputil"
+	"github.com/huangke/bt-spider/search"
 )
 
 // BtDig 基于 BTDigg DHT 搜索引擎
@@ -28,7 +29,7 @@ func (b *BtDig) Name() string {
 	return "BTDigg"
 }
 
-func (b *BtDig) Search(keyword string, page int) ([]Result, error) {
+func (b *BtDig) Search(keyword string, page int) ([]search.Result, error) {
 	searchURL := fmt.Sprintf("%s/search?q=%s&p=%d&order=0",
 		b.baseURL, url.QueryEscape(keyword), page)
 
@@ -57,33 +58,27 @@ func (b *BtDig) Search(keyword string, page int) ([]Result, error) {
 }
 
 var (
-	btdigNamePattern = regexp.MustCompile(`<div class="torrent_name">.*?<a href="/([0-9a-fA-F]{40})"[^>]*>(.+?)</a>`)
-	btdigSizePattern = regexp.MustCompile(`<span class="torrent_size"[^>]*>([^<]+)</span>`)
-	btdigFilesPattern = regexp.MustCompile(`<span class="torrent_files"[^>]*>(\d+)\s*files?</span>`)
+	btdigNamePattern  = regexp.MustCompile(`<div class="torrent_name">.*?<a href="/([0-9a-fA-F]{40})"[^>]*>(.+?)</a>`)
+	btdigSizePattern  = regexp.MustCompile(`<span class="torrent_size"[^>]*>([^<]+)</span>`)
 )
 
-func (b *BtDig) parseHTML(html string) ([]Result, error) {
-	var results []Result
+func (b *BtDig) parseHTML(html string) ([]search.Result, error) {
+	var results []search.Result
 
-	// 按 torrent 条目分割
 	entries := strings.Split(html, `<div class="one_result">`)
 	if len(entries) <= 1 {
-		// 尝试另一种分割方式
 		entries = strings.Split(html, `<div class="torrent_name">`)
 	}
 
-	for _, entry := range entries[1:] { // 跳过第一段（header）
-		// 提取 info_hash 和名称
+	for _, entry := range entries[1:] {
 		nameMatch := btdigNamePattern.FindStringSubmatch(entry)
 		if nameMatch == nil {
-			// 尝试直接提取 hash
 			hashPattern := regexp.MustCompile(`/([0-9a-fA-F]{40})`)
 			hashMatch := hashPattern.FindStringSubmatch(entry)
 			if hashMatch == nil {
 				continue
 			}
 
-			// 提取名称
 			titlePattern := regexp.MustCompile(`>([^<]{5,})</a>`)
 			titleMatch := titlePattern.FindStringSubmatch(entry)
 			name := "Unknown"
@@ -96,7 +91,6 @@ func (b *BtDig) parseHTML(html string) ([]Result, error) {
 
 		infoHash := nameMatch[1]
 		name := strings.TrimSpace(nameMatch[2])
-		// 清理 HTML 标签
 		name = regexp.MustCompile(`<[^>]+>`).ReplaceAllString(name, "")
 		name = strings.TrimSpace(name)
 
@@ -104,25 +98,23 @@ func (b *BtDig) parseHTML(html string) ([]Result, error) {
 			continue
 		}
 
-		// 提取大小
 		size := "未知"
 		sizeMatch := btdigSizePattern.FindStringSubmatch(entry)
 		if sizeMatch != nil {
 			size = strings.TrimSpace(sizeMatch[1])
 		}
 
-		result := Result{
+		result := search.Result{
 			Name:     name,
 			Size:     size,
-			Seeders:  -1, // BTDigg 不提供精确做种数
+			Seeders:  -1,
 			Leechers: 0,
 			InfoHash: infoHash,
 			Source:   b.Name(),
-			Magnet:   BuildMagnet(infoHash, url.QueryEscape(name)),
+			Magnet:   search.BuildMagnet(infoHash, url.QueryEscape(name)),
 		}
 		results = append(results, result)
 	}
 
 	return results, nil
 }
-

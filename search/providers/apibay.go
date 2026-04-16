@@ -1,4 +1,4 @@
-package search
+package providers
 
 import (
 	"encoding/json"
@@ -12,6 +12,7 @@ import (
 
 	"github.com/huangke/bt-spider/pkg/httputil"
 	"github.com/huangke/bt-spider/pkg/utils"
+	"github.com/huangke/bt-spider/search"
 )
 
 // ApiBay 基于 ThePirateBay API 的搜索源
@@ -41,7 +42,7 @@ type apiBayResult struct {
 	Category string `json:"category"`
 }
 
-func (a *ApiBay) Search(keyword string, page int) ([]Result, error) {
+func (a *ApiBay) Search(keyword string, page int) ([]search.Result, error) {
 	apiURL := fmt.Sprintf("%s/q.php?q=%s&cat=", a.baseURL, url.QueryEscape(keyword))
 
 	req, err := http.NewRequest(http.MethodGet, apiURL, nil)
@@ -70,9 +71,8 @@ func (a *ApiBay) Search(keyword string, page int) ([]Result, error) {
 		return nil, fmt.Errorf("解析响应失败: %w", err)
 	}
 
-	var results []Result
+	var results []search.Result
 	for _, r := range apiResults {
-		// apibay 返回 id=0 name="No results" 表示无结果
 		if r.ID == "0" || r.Name == "No results returned" {
 			continue
 		}
@@ -81,7 +81,7 @@ func (a *ApiBay) Search(keyword string, page int) ([]Result, error) {
 		leechers, _ := strconv.Atoi(r.Leechers)
 		sizeBytes, _ := strconv.ParseInt(r.Size, 10, 64)
 
-		result := Result{
+		result := search.Result{
 			Name:     r.Name,
 			Size:     utils.FormatBytes(sizeBytes),
 			Seeders:  seeders,
@@ -89,26 +89,23 @@ func (a *ApiBay) Search(keyword string, page int) ([]Result, error) {
 			InfoHash: r.InfoHash,
 			Source:   a.Name(),
 		}
-		result.Magnet = BuildMagnet(r.InfoHash, url.QueryEscape(r.Name))
+		result.Magnet = search.BuildMagnet(r.InfoHash, url.QueryEscape(r.Name))
 
 		results = append(results, result)
 	}
 
-	// apibay 搜不到时会返回热门列表，需要过滤掉无关结果
 	results = filterRelevant(results, keyword)
 
 	return results, nil
 }
 
-// filterRelevant 过滤与关键词不相关的结果。
-// apibay 在搜索无结果时会返回全站热门，导致中文等关键词搜出无关内容。
-func filterRelevant(results []Result, keyword string) []Result {
+func filterRelevant(results []search.Result, keyword string) []search.Result {
 	tokens := keywordTokens(keyword)
 	if len(tokens) == 0 {
 		return results
 	}
 
-	var filtered []Result
+	var filtered []search.Result
 	for _, r := range results {
 		nameLower := strings.ToLower(r.Name)
 		for _, tok := range tokens {
@@ -121,8 +118,6 @@ func filterRelevant(results []Result, keyword string) []Result {
 	return filtered
 }
 
-// keywordTokens 将关键词拆分为用于匹配的 token 列表（全小写）。
-// 中文按单字拆分（连续中文字符作为整体），英文按空格拆分。
 func keywordTokens(keyword string) []string {
 	keyword = strings.ToLower(strings.TrimSpace(keyword))
 	if keyword == "" {
@@ -131,7 +126,6 @@ func keywordTokens(keyword string) []string {
 
 	var tokens []string
 
-	// 提取连续的中文子串
 	var cjk []rune
 	for _, r := range keyword {
 		if unicode.Is(unicode.Han, r) {
@@ -147,9 +141,7 @@ func keywordTokens(keyword string) []string {
 		tokens = append(tokens, string(cjk))
 	}
 
-	// 提取英文单词（按空格/标点分割，过滤短词）
 	for _, word := range strings.Fields(keyword) {
-		// 去掉非字母数字
 		cleaned := strings.Map(func(r rune) rune {
 			if unicode.IsLetter(r) || unicode.IsDigit(r) {
 				return r
@@ -163,4 +155,3 @@ func keywordTokens(keyword string) []string {
 
 	return tokens
 }
-

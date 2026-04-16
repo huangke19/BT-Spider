@@ -1,4 +1,4 @@
-package search
+package providers
 
 import (
 	"encoding/xml"
@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/huangke/bt-spider/pkg/httputil"
+	"github.com/huangke/bt-spider/search"
 )
 
 // Nyaa 基于 Nyaa.si RSS 的搜索源（动漫/日语资源）
@@ -51,8 +52,7 @@ type nyaaItem struct {
 
 var nyaaHashPattern = regexp.MustCompile(`(?i)[0-9a-f]{40}`)
 
-func (n *Nyaa) Search(keyword string, page int) ([]Result, error) {
-	// Nyaa RSS: ?page=rss&q=keyword&s=seeders&o=desc
+func (n *Nyaa) Search(keyword string, page int) ([]search.Result, error) {
 	searchURL := fmt.Sprintf("%s/?page=rss&q=%s&s=seeders&o=desc",
 		n.baseURL, url.QueryEscape(keyword))
 
@@ -82,7 +82,7 @@ func (n *Nyaa) Search(keyword string, page int) ([]Result, error) {
 		return nil, fmt.Errorf("解析 RSS 失败: %w", err)
 	}
 
-	var results []Result
+	var results []search.Result
 	for _, item := range rss.Channel.Items {
 		name := strings.TrimSpace(item.Title)
 		if name == "" {
@@ -91,7 +91,6 @@ func (n *Nyaa) Search(keyword string, page int) ([]Result, error) {
 
 		infoHash := item.InfoHash
 		if infoHash == "" {
-			// 尝试从 link 或 guid 中提取
 			infoHash = nyaaHashPattern.FindString(item.Link)
 			if infoHash == "" {
 				infoHash = nyaaHashPattern.FindString(item.GUID)
@@ -109,14 +108,14 @@ func (n *Nyaa) Search(keyword string, page int) ([]Result, error) {
 			size = "未知"
 		}
 
-		result := Result{
+		result := search.Result{
 			Name:     name,
 			Size:     size,
 			Seeders:  seeders,
 			Leechers: leechers,
 			InfoHash: strings.ToUpper(infoHash),
 			Source:   n.Name(),
-			Magnet:   BuildMagnet(strings.ToUpper(infoHash), url.QueryEscape(name)),
+			Magnet:   search.BuildMagnet(strings.ToUpper(infoHash), url.QueryEscape(name)),
 		}
 		results = append(results, result)
 	}

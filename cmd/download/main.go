@@ -31,7 +31,8 @@ import (
 	"github.com/huangke/bt-spider/engine"
 	"github.com/huangke/bt-spider/pkg/logger"
 	"github.com/huangke/bt-spider/pkg/utils"
-	"github.com/huangke/bt-spider/search"
+	"github.com/huangke/bt-spider/search/pipeline"
+	"github.com/huangke/bt-spider/search/providers"
 )
 
 var (
@@ -159,7 +160,7 @@ func resolveMagnet(arg string) (magnet, name string, err error) {
 	}
 
 	emit("search", map[string]any{"keyword": arg})
-	results, err := search.Search(arg, search.DefaultProviders())
+	results, err := pipeline.Search(arg, providers.DefaultProviders())
 	if err != nil {
 		return "", "", fmt.Errorf("搜索失败: %w", err)
 	}

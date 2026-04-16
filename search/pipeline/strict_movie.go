@@ -1,13 +1,12 @@
-package search
+package pipeline
 
 import (
 	"sort"
 	"strconv"
 	"strings"
 	"time"
-	"unicode"
 
-	"golang.org/x/text/unicode/norm"
+	"github.com/huangke/bt-spider/search"
 )
 
 type strictMovieQuery struct {
@@ -16,51 +15,19 @@ type strictMovieQuery struct {
 }
 
 var strictMovieAlternateTitles = map[string][]string{
-	"leon":                 {"leon the professional"},
+	"leon":                  {"leon the professional"},
 	"leon the professional": {"leon"},
 }
 
 func parseStrictMovieQuery(keyword string) (strictMovieQuery, bool) {
-	titleKey, year, has1080, ok := parseMovieTitleYear(keyword)
+	titleKey, year, has1080, ok := search.ParseMovieTitleYear(keyword)
 	if !ok || year == "" || !has1080 {
 		return strictMovieQuery{}, false
 	}
 	return strictMovieQuery{titleKey: titleKey, year: year}, true
 }
 
-func parseMovieTitleYear(keyword string) (titleKey, year string, has1080, ok bool) {
-	tokens := splitComparableTokens(strings.ToLower(strings.TrimSpace(keyword)))
-	if len(tokens) == 0 {
-		return "", "", false, false
-	}
-
-	filtered := make([]string, 0, len(tokens))
-	for _, tok := range tokens {
-		switch {
-		case isStrictYearToken(tok):
-			year = tok
-			continue
-		case isStrict1080Token(tok):
-			has1080 = true
-			continue
-		default:
-			filtered = append(filtered, tok)
-		}
-	}
-
-	filtered = trimLeadingArticle(filtered)
-	if len(filtered) == 0 {
-		return "", "", has1080, false
-	}
-
-	titleKey = strings.Join(filtered, " ")
-	if containsCJK(titleKey) {
-		return "", "", has1080, false
-	}
-	return titleKey, year, has1080, true
-}
-
-func finalizeStrictMovieResults(allResults []Result, query strictMovieQuery) []Result {
+func finalizeStrictMovieResults(allResults []search.Result, query strictMovieQuery) []search.Result {
 	allResults = dedup(allResults)
 
 	for i := range allResults {
@@ -94,7 +61,7 @@ func finalizeStrictMovieResults(allResults []Result, query strictMovieQuery) []R
 	}
 
 	type scoredResult struct {
-		result Result
+		result search.Result
 		score  int
 	}
 
@@ -126,7 +93,7 @@ func finalizeStrictMovieResults(allResults []Result, query strictMovieQuery) []R
 		return sourceTrustScore(candidates[i].result.Source) > sourceTrustScore(candidates[j].result.Source)
 	})
 
-	out := make([]Result, 0, len(candidates))
+	out := make([]search.Result, 0, len(candidates))
 	for _, c := range candidates {
 		out = append(out, c.result)
 	}
@@ -152,21 +119,21 @@ func strictMovieMatchesTitle(name string, query strictMovieQuery) bool {
 }
 
 func strictMovieTitleKey(name, year string) string {
-	tokens := splitComparableTokens(strings.ToLower(name))
+	tokens := search.SplitComparableTokens(strings.ToLower(name))
 	if len(tokens) == 0 {
 		return ""
 	}
 
 	cut := len(tokens)
 	for i, tok := range tokens {
-		if tok == year || isStrict1080Token(tok) || isStrictForbiddenResolutionToken(tok) {
+		if tok == year || search.IsStrict1080Token(tok) || search.IsStrictForbiddenResolutionToken(tok) {
 			cut = i
 			break
 		}
 	}
 
 	tokens = tokens[:cut]
-	tokens = trimLeadingArticle(tokens)
+	tokens = search.TrimLeadingArticle(tokens)
 	if len(tokens) == 0 {
 		return ""
 	}
@@ -174,7 +141,7 @@ func strictMovieTitleKey(name, year string) string {
 }
 
 func strictMovieHas1080P(name string) bool {
-	tokens := splitComparableTokens(strings.ToLower(name))
+	tokens := search.SplitComparableTokens(strings.ToLower(name))
 	for _, tok := range tokens {
 		if tok == "1080p" || tok == "1920x1080" {
 			return true
@@ -184,16 +151,16 @@ func strictMovieHas1080P(name string) bool {
 }
 
 func strictMovieHasForbiddenResolution(name string) bool {
-	tokens := splitComparableTokens(strings.ToLower(name))
+	tokens := search.SplitComparableTokens(strings.ToLower(name))
 	for _, tok := range tokens {
-		if isStrictForbiddenResolutionToken(tok) {
+		if search.IsStrictForbiddenResolutionToken(tok) {
 			return true
 		}
 	}
 	return false
 }
 
-func scoreStrictMovieResult(r Result) int {
+func scoreStrictMovieResult(r search.Result) int {
 	score := 80
 	score += sourceTrustScore(r.Source) * 3
 	score += seederScore(r.Seeders)
@@ -287,92 +254,4 @@ func parseSizeToGB(size string) (float64, bool) {
 	default:
 		return 0, false
 	}
-}
-
-func splitComparableTokens(s string) []string {
-	parts := strings.FieldsFunc(s, func(r rune) bool {
-		return !(unicode.IsLetter(r) || unicode.IsDigit(r))
-	})
-	if len(parts) == 0 {
-		return nil
-	}
-	out := make([]string, 0, len(parts))
-	for _, p := range parts {
-		p = normalizeComparableToken(p)
-		if p != "" {
-			out = append(out, p)
-		}
-	}
-	return out
-}
-
-func normalizeComparableToken(token string) string {
-	token = strings.ToLower(strings.TrimSpace(token))
-	if token == "" {
-		return ""
-	}
-
-	decomposed := norm.NFD.String(token)
-	var b strings.Builder
-	for _, r := range decomposed {
-		if unicode.Is(unicode.Mn, r) {
-			continue
-		}
-		b.WriteRune(r)
-	}
-	return b.String()
-}
-
-func trimLeadingArticle(tokens []string) []string {
-	if len(tokens) == 0 {
-		return tokens
-	}
-	switch tokens[0] {
-	case "the", "a", "an":
-		return tokens[1:]
-	default:
-		return tokens
-	}
-}
-
-func isStrictYearToken(tok string) bool {
-	if len(tok) != 4 {
-		return false
-	}
-	if tok[0] != '1' && tok[0] != '2' {
-		return false
-	}
-	for i := 1; i < 4; i++ {
-		if tok[i] < '0' || tok[i] > '9' {
-			return false
-		}
-	}
-	return true
-}
-
-func isStrict1080Token(tok string) bool {
-	switch tok {
-	case "1080p", "1920x1080":
-		return true
-	default:
-		return false
-	}
-}
-
-func isStrictForbiddenResolutionToken(tok string) bool {
-	switch tok {
-	case "720p", "1080i", "2160p", "4k", "2k", "1440p", "uhd", "480p", "360p":
-		return true
-	default:
-		return false
-	}
-}
-
-func containsCJK(s string) bool {
-	for _, r := range s {
-		if isCJK(r) {
-			return true
-		}
-	}
-	return false
 }

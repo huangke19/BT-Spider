@@ -1,4 +1,4 @@
-package search
+package query
 
 import (
 	"encoding/json"
@@ -19,13 +19,12 @@ type tmdbSearchResponse struct {
 
 type tmdbMovie struct {
 	Title       string  `json:"title"`
-	ReleaseDate string  `json:"release_date"` // "2014-04-04"
+	ReleaseDate string  `json:"release_date"`
 	VoteCount   int     `json:"vote_count"`
 	Popularity  float64 `json:"popularity"`
 }
 
-// SearchTMDB 用片名（支持中文）查询 TMDB，返回英文标准标题 + 年份。
-// apiKey 应为 TMDB API Read Access Token（Bearer token）。
+// SearchTMDB 用片名查询 TMDB，返回英文标准标题 + 年份。
 func SearchTMDB(query, apiKey string) (movieMeta, bool) {
 	endpoint := fmt.Sprintf(
 		"https://api.themoviedb.org/3/search/movie?query=%s&language=en-US&page=1",
@@ -57,8 +56,6 @@ func SearchTMDB(query, apiKey string) (movieMeta, bool) {
 		return movieMeta{}, false
 	}
 
-	// 按投票数降序（正片投票数通常远高于同名纪录片/幕后花絮）；
-	// 投票数相同再比 popularity。
 	sort.SliceStable(result.Results, func(i, j int) bool {
 		if result.Results[i].VoteCount != result.Results[j].VoteCount {
 			return result.Results[i].VoteCount > result.Results[j].VoteCount

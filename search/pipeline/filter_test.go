@@ -1,22 +1,24 @@
-package search
+package pipeline
 
 import (
 	"reflect"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/huangke/bt-spider/search"
 )
 
 type stubProvider struct {
 	name    string
 	delay   time.Duration
-	results []Result
+	results []search.Result
 	err     error
 }
 
 func (s stubProvider) Name() string { return s.name }
 
-func (s stubProvider) Search(keyword string, page int) ([]Result, error) {
+func (s stubProvider) Search(keyword string, page int) ([]search.Result, error) {
 	if s.delay > 0 {
 		time.Sleep(s.delay)
 	}
@@ -72,19 +74,16 @@ func TestTokenize(t *testing.T) {
 }
 
 func TestFilterByKeyword(t *testing.T) {
-	// 模拟 provider 返回的混杂结果
-	results := []Result{
+	results := []search.Result{
 		{Name: "The Bourne Supremacy 2004 1080p BluRay", Seeders: 50},
 		{Name: "The Bourne Identity 2002 1080p", Seeders: 30},
 		{Name: "谍影重重 第二部 2004 中字", Seeders: 20},
-		{Name: "谍影重重 第二部分.The.Bourne.Identity.2002", Seeders: 10}, // 错标
+		{Name: "谍影重重 第二部分.The.Bourne.Identity.2002", Seeders: 10},
 		{Name: "Random Movie 2020", Seeders: 5},
 	}
 
 	t.Run("英文关键词精确过滤", func(t *testing.T) {
 		filtered := filterByKeyword(results, "Bourne Supremacy")
-		// tokens: bourne, supremacy —— 要求 >= 2 个匹配
-		// 只有 #1 能命中两个
 		if len(filtered) != 1 || filtered[0].Name != results[0].Name {
 			t.Errorf("期望只保留 Bourne Supremacy，实际 %d 条: %+v", len(filtered), filtered)
 		}
@@ -92,7 +91,6 @@ func TestFilterByKeyword(t *testing.T) {
 
 	t.Run("中文关键词 bigram 过滤掉无关结果", func(t *testing.T) {
 		filtered := filterByKeyword(results, "谍影重重第二部")
-		// 应保留包含中文名的两条，过滤掉纯英文和无关电影
 		names := make(map[string]bool)
 		for _, r := range filtered {
 			names[r.Name] = true
@@ -108,13 +106,11 @@ func TestFilterByKeyword(t *testing.T) {
 		}
 	})
 
-	t.Run("零匹配时不再错误地保留所有结果（通过 provider 过滤掉了）", func(t *testing.T) {
-		// 构造一个确实没 token 匹配的场景：关键词 CJK 段长 >= 2 可 bigram
-		noMatch := []Result{
+	t.Run("零匹配时兜底返回原始", func(t *testing.T) {
+		noMatch := []search.Result{
 			{Name: "Completely Unrelated Content", Seeders: 1},
 		}
 		filtered := filterByKeyword(noMatch, "谍影重重")
-		// 过滤后为空 → fallback 保守返回原始（这是合理兜底行为，保护调用方）
 		if len(filtered) != 1 {
 			t.Errorf("兜底应返回 1 条，得到 %d 条", len(filtered))
 		}
@@ -122,17 +118,17 @@ func TestFilterByKeyword(t *testing.T) {
 }
 
 func TestSearchWithTimeoutReturnsPartialResults(t *testing.T) {
-	providers := []Provider{
+	providers := []search.Provider{
 		stubProvider{
 			name: "fast",
-			results: []Result{
+			results: []search.Result{
 				{Name: "The Bourne Supremacy 2004", Seeders: 10, InfoHash: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"},
 			},
 		},
 		stubProvider{
 			name:  "slow",
 			delay: 200 * time.Millisecond,
-			results: []Result{
+			results: []search.Result{
 				{Name: "Slow Result", Seeders: 20, InfoHash: "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"},
 			},
 		},
@@ -152,7 +148,7 @@ func TestSearchWithTimeoutReturnsPartialResults(t *testing.T) {
 }
 
 func TestSearchWithTimeoutReportsTimeoutWithoutResults(t *testing.T) {
-	providers := []Provider{
+	providers := []search.Provider{
 		stubProvider{name: "slow-a", delay: 100 * time.Millisecond},
 		stubProvider{name: "slow-b", delay: 100 * time.Millisecond},
 	}
@@ -166,23 +162,13 @@ func TestSearchWithTimeoutReportsTimeoutWithoutResults(t *testing.T) {
 	}
 }
 
-func TestResolveMovieSearchInputUsesLeonAlias(t *testing.T) {
-	resolved, ok := ResolveMovieSearchInput("这个杀手不太冷")
-	if !ok {
-		t.Fatal("expected alias hit for 这个杀手不太冷")
-	}
-	if resolved.Query != "Léon 1994 1080P" {
-		t.Fatalf("unexpected query: %q", resolved.Query)
-	}
-}
-
 func TestFinalizeStrictMovieResultsAcceptsLeonAlternateTitles(t *testing.T) {
 	query, ok := parseStrictMovieQuery("Léon 1994 1080P")
 	if !ok {
 		t.Fatal("expected strict query parse to succeed")
 	}
 
-	results := []Result{
+	results := []search.Result{
 		{Name: "Leon.1994.1080p.BluRay.x264", Seeders: 10, Source: "1337x", InfoHash: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"},
 		{Name: "Leon.The.Professional.1994.1080p.BluRay.x265", Seeders: 8, Source: "ThePirateBay", InfoHash: "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"},
 		{Name: "Leon.1994.720p.BluRay.x264", Seeders: 50, Source: "1337x", InfoHash: "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC"},

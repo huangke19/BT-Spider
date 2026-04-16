@@ -1,4 +1,4 @@
-package search
+package providers
 
 import (
 	"fmt"
@@ -10,7 +10,8 @@ import (
 	"sync"
 	"time"
 
-	httputil "github.com/huangke/bt-spider/pkg/httputil"
+	"github.com/huangke/bt-spider/pkg/httputil"
+	"github.com/huangke/bt-spider/search"
 )
 
 const leet337BaseURL = "https://www.1337xx.to"
@@ -25,11 +26,10 @@ func NewLeet337x() *Leet337x {
 
 func (l *Leet337x) Name() string { return "1337x" }
 
-func (l *Leet337x) Search(keyword string, page int) ([]Result, error) {
+func (l *Leet337x) Search(keyword string, page int) ([]search.Result, error) {
 	if page < 1 {
 		page = 1
 	}
-	// 用连字符替换空格以提高匹配精度
 	slug := strings.ReplaceAll(keyword, " ", "-")
 	u := fmt.Sprintf("%s/search/%s/%d/", leet337BaseURL, url.PathEscape(slug), page)
 	body, err := l.get(u)
@@ -37,7 +37,6 @@ func (l *Leet337x) Search(keyword string, page int) ([]Result, error) {
 		return nil, err
 	}
 
-	// 解析列表页：href、name、seeders
 	reHref := regexp.MustCompile(`href="(/torrent/\d+/([^/"]+)/)"`)
 	reSeeds := regexp.MustCompile(`<td class="coll-2 seeds">(\d+)</td>`)
 	reLeeches := regexp.MustCompile(`<td class="coll-3 leeches">(\d+)</td>`)
@@ -76,10 +75,9 @@ func (l *Leet337x) Search(keyword string, page int) ([]Result, error) {
 		})
 	}
 
-	// 并发拉详情页拿磁力链接和大小
-	results := make([]Result, len(items))
+	results := make([]search.Result, len(items))
 	var wg sync.WaitGroup
-	sem := make(chan struct{}, 5) // 最多5并发
+	sem := make(chan struct{}, 5)
 
 	reMagnet := regexp.MustCompile(`(magnet:\?xt=urn:btih:[A-Za-z0-9]+[^"'\s]*)`)
 	reSize := regexp.MustCompile(`<strong>Total size</strong><span>([^<]+)</span>`)
@@ -105,7 +103,6 @@ func (l *Leet337x) Search(keyword string, page int) ([]Result, error) {
 			}
 
 			magnet := mMagnet[1]
-			// 提取 info_hash
 			mHash := reHash.FindStringSubmatch(magnet)
 			infoHash := ""
 			if mHash != nil {
@@ -119,7 +116,7 @@ func (l *Leet337x) Search(keyword string, page int) ([]Result, error) {
 
 			name := strings.ReplaceAll(it.slug, "-", " ")
 
-			results[idx] = Result{
+			results[idx] = search.Result{
 				Name:     name,
 				Size:     size,
 				Seeders:  it.seeders,
@@ -132,7 +129,7 @@ func (l *Leet337x) Search(keyword string, page int) ([]Result, error) {
 	}
 	wg.Wait()
 
-	var out []Result
+	var out []search.Result
 	for _, r := range results {
 		if r.Magnet != "" {
 			out = append(out, r)

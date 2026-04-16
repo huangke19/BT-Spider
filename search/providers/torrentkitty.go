@@ -1,4 +1,4 @@
-package search
+package providers
 
 import (
 	"fmt"
@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/huangke/bt-spider/pkg/httputil"
+	"github.com/huangke/bt-spider/search"
 )
 
 // TorrentKitty 基于 torrentkitty.tv 的搜索源，磁力聚合站
@@ -28,14 +29,13 @@ func (t *TorrentKitty) Name() string {
 	return "TorrentKitty"
 }
 
-// 按 <tr> 行解析，避免跨行对齐错位
 var (
 	tkRowPattern    = regexp.MustCompile(`(?s)<tr[^>]*>(.+?)</tr>`)
 	tkNamePattern   = regexp.MustCompile(`<td class="name">([^<]+)</td>`)
 	tkMagnetPattern = regexp.MustCompile(`href="(magnet:\?xt=urn:btih:[^"]+)"`)
 )
 
-func (t *TorrentKitty) Search(keyword string, page int) ([]Result, error) {
+func (t *TorrentKitty) Search(keyword string, page int) ([]search.Result, error) {
 	searchURL := fmt.Sprintf("%s/search/%s", t.baseURL, url.PathEscape(keyword))
 
 	req, err := http.NewRequest(http.MethodGet, searchURL, nil)
@@ -61,9 +61,8 @@ func (t *TorrentKitty) Search(keyword string, page int) ([]Result, error) {
 
 	html := string(body)
 
-	// 按行解析，保证 name/size/magnet 来自同一 <tr>
 	rows := tkRowPattern.FindAllStringSubmatch(html, -1)
-	var results []Result
+	var results []search.Result
 	for _, row := range rows {
 		cell := row[1]
 
@@ -76,7 +75,6 @@ func (t *TorrentKitty) Search(keyword string, page int) ([]Result, error) {
 
 		name := strings.TrimSpace(mName[1])
 		magnet := strings.TrimSpace(mMagnet[1])
-		// TorrentKitty 只提供 .torrent 元数据文件本身的大小，不是内容大小，不可信，置为未知。
 		size := "未知"
 
 		infoHash := extractHashFromMagnet(magnet)
@@ -84,10 +82,10 @@ func (t *TorrentKitty) Search(keyword string, page int) ([]Result, error) {
 			continue
 		}
 
-		results = append(results, Result{
+		results = append(results, search.Result{
 			Name:     name,
 			Size:     size,
-			Seeders:  -1, // TorrentKitty 不提供做种数
+			Seeders:  -1,
 			Leechers: 0,
 			InfoHash: infoHash,
 			Source:   t.Name(),
@@ -98,7 +96,6 @@ func (t *TorrentKitty) Search(keyword string, page int) ([]Result, error) {
 	return results, nil
 }
 
-// extractHashFromMagnet 从 magnet 链接中提取 info_hash
 var magnetHashPattern = regexp.MustCompile(`(?i)urn:btih:([0-9a-f]{40})`)
 
 func extractHashFromMagnet(magnet string) string {

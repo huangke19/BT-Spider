@@ -1,4 +1,4 @@
-package search
+package providers
 
 import (
 	"encoding/xml"
@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/huangke/bt-spider/pkg/httputil"
+	"github.com/huangke/bt-spider/search"
 )
 
 // BT4G 基于 BT4G RSS 接口的搜索源
@@ -29,7 +30,6 @@ func (b *BT4G) Name() string {
 	return "BT4G"
 }
 
-// RSS XML 结构
 type bt4gRSS struct {
 	XMLName xml.Name    `xml:"rss"`
 	Channel bt4gChannel `xml:"channel"`
@@ -47,7 +47,7 @@ type bt4gItem struct {
 
 var bt4gHashPattern = regexp.MustCompile(`(?i)[0-9a-f]{40}`)
 
-func (b *BT4G) Search(keyword string, page int) ([]Result, error) {
+func (b *BT4G) Search(keyword string, page int) ([]search.Result, error) {
 	searchURL := fmt.Sprintf("%s/search?q=%s&page=rss&bt4g_order_by=seeders",
 		b.baseURL, url.QueryEscape(keyword))
 
@@ -77,9 +77,8 @@ func (b *BT4G) Search(keyword string, page int) ([]Result, error) {
 		return nil, fmt.Errorf("解析 RSS 失败: %w", err)
 	}
 
-	var results []Result
+	var results []search.Result
 	for _, item := range rss.Channel.Items {
-		// 从链接或描述中提取 info_hash
 		infoHash := extractHash(item.Link)
 		if infoHash == "" {
 			infoHash = extractHash(item.Description)
@@ -93,17 +92,16 @@ func (b *BT4G) Search(keyword string, page int) ([]Result, error) {
 			continue
 		}
 
-		// 从描述中提取大小
 		size := extractSize(item.Description)
 
-		result := Result{
+		result := search.Result{
 			Name:     name,
 			Size:     size,
-			Seeders:  -1, // RSS 不提供精确做种数
+			Seeders:  -1,
 			Leechers: 0,
 			InfoHash: infoHash,
 			Source:   b.Name(),
-			Magnet:   BuildMagnet(infoHash, url.QueryEscape(name)),
+			Magnet:   search.BuildMagnet(infoHash, url.QueryEscape(name)),
 		}
 		results = append(results, result)
 	}
@@ -111,7 +109,6 @@ func (b *BT4G) Search(keyword string, page int) ([]Result, error) {
 	return results, nil
 }
 
-// extractHash 从文本中提取 40 位十六进制 info_hash
 func extractHash(text string) string {
 	match := bt4gHashPattern.FindString(text)
 	return strings.ToUpper(match)
@@ -119,7 +116,6 @@ func extractHash(text string) string {
 
 var bt4gSizePattern = regexp.MustCompile(`(?i)([\d.]+)\s*(GB|MB|KB|TB|B)\b`)
 
-// extractSize 从描述文本中提取文件大小
 func extractSize(desc string) string {
 	match := bt4gSizePattern.FindStringSubmatch(desc)
 	if match != nil {
