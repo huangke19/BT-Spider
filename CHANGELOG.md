@@ -1,6 +1,18 @@
 # CHANGELOG
 
 
+## 2026-04-17（搜索源清理）
+
+- **移除无用搜索源**：基于 `search_history.db` 审计库的实测数据分析：
+  - **BTDigg**：23/23 次全部失败（HTTP 429 限速 + 熔断器），删除 `btdig.go`
+  - **Nyaa**：26/26 次成功但返回 0 条结果（动漫源，电影搜索无用），删除 `nyaa.go`
+  - **YTS**：删除后恢复，留待后续验证
+  - 从 `DefaultProviders()` 注册表移除 BTDigg/Nyaa
+  - 从 `sourceTrustScore()` 移除已删源的信任分
+- 剩余 5 个搜索源：ThePirateBay、BT4G、1337x、TorrentKitty、YTS
+- 更新 README.md 搜索源数量描述
+
+
 ## 2026-04-17
 
 ### 架构重构（Day 3a – Day 9）

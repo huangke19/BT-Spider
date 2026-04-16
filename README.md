@@ -16,7 +16,7 @@
 
 ## 功能
 
-- 聚合 8 个搜索源：ApiBay、BTDigg、BT4G、YTS、EZTV、Nyaa、1337x、TorrentKitty
+- 聚合 5 个搜索源：ApiBay、BT4G、YTS、1337x、TorrentKitty（BTDigg/Nyaa/EZTV 已移除）
 - 并发搜索、自动去重、按做种数降序排列
 - 搜索带总超时保护，慢源不会一直拖住整体结果
 - 本地搜索审计数据库：记录每次搜索会话、每个搜索源的成功/失败，以及返回的全部条目（用于后续统计分析）
@@ -53,7 +53,6 @@ bt> search The Bourne Supremacy 2004
 bt> 1                    # 下载第 1 条结果
 bt> 2                    # 再加一个任务，两个并行下载
 bt> c 1                  # 取消任务 #1
-- 聚合 7 个搜索源：ApiBay、BTDigg、BT4G、YTS、Nyaa、1337x、TorrentKitty（EZTV 已移除，因 API 不支持关键词搜索）
 bt> q                    # 退出
 ```
 
