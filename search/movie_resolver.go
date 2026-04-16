@@ -113,7 +113,18 @@ func lookupMovieMeta(norm string) (movieMeta, bool) {
 	if norm == "" {
 		return movieMeta{}, false
 	}
+	normRunes := []rune(norm)
 	for _, key := range movieAliasKeys {
+		keyRunes := []rune(key)
+		// 要求较短一侧至少 3 个字符才允许子串匹配，
+		// 避免"2"这种碎片命中任何含 2 的别名（如 "黑客帝国2" 被误判成 "美国队长2"）。
+		shortLen := len(normRunes)
+		if len(keyRunes) < shortLen {
+			shortLen = len(keyRunes)
+		}
+		if shortLen < 3 {
+			continue
+		}
 		if strings.Contains(norm, key) || strings.Contains(key, norm) {
 			return movieAliases[key], true
 		}
