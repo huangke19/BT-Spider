@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"sort"
 	"time"
 
 	"github.com/huangke/bt-spider/pkg/httputil"
@@ -17,8 +18,10 @@ type tmdbSearchResponse struct {
 }
 
 type tmdbMovie struct {
-	Title       string `json:"title"`
-	ReleaseDate string `json:"release_date"` // "2014-04-04"
+	Title       string  `json:"title"`
+	ReleaseDate string  `json:"release_date"` // "2014-04-04"
+	VoteCount   int     `json:"vote_count"`
+	Popularity  float64 `json:"popularity"`
 }
 
 // SearchTMDB 用片名（支持中文）查询 TMDB，返回英文标准标题 + 年份。
@@ -53,6 +56,15 @@ func SearchTMDB(query, apiKey string) (movieMeta, bool) {
 	if len(result.Results) == 0 {
 		return movieMeta{}, false
 	}
+
+	// 按投票数降序（正片投票数通常远高于同名纪录片/幕后花絮）；
+	// 投票数相同再比 popularity。
+	sort.SliceStable(result.Results, func(i, j int) bool {
+		if result.Results[i].VoteCount != result.Results[j].VoteCount {
+			return result.Results[i].VoteCount > result.Results[j].VoteCount
+		}
+		return result.Results[i].Popularity > result.Results[j].Popularity
+	})
 
 	movie := result.Results[0]
 	year := ""
