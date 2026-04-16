@@ -120,6 +120,14 @@ func main() {
 				"peers":     snap.Peers,
 				"eta":       etaStr(snap.ETA),
 			})
+		case engine.StateSeeding:
+			emit("seeding", map[string]any{
+				"uploaded":    utils.FormatBytes(snap.Uploaded),
+				"share_ratio": fmt.Sprintf("%.2f", snap.ShareRatio),
+				"speed":       utils.FormatBytes(int64(snap.Speed)) + "/s",
+				"peers":       snap.Peers,
+				"elapsed":     etaStr(snap.SeedElapsed),
+			})
 		case engine.StateDone:
 			emit("done", map[string]any{
 				"name": snap.Name,
@@ -205,6 +213,9 @@ func emit(event string, data map[string]any) {
 		fmt.Printf("[progress] %s%%  %s/%s  ↓ %s  peers=%d  ETA %s\n",
 			data["percent"], data["completed"], data["total"],
 			data["speed"], data["peers"], data["eta"])
+	case "seeding":
+		fmt.Printf("[seeding] ↑ %s  ratio=%s  speed=%s  peers=%d  elapsed %s\n",
+			data["uploaded"], data["share_ratio"], data["speed"], data["peers"], data["elapsed"])
 	case "done":
 		fmt.Printf("[done] ✅ %s -> %s\n", data["name"], data["dir"])
 	case "error":

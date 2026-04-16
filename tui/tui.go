@@ -343,6 +343,13 @@ func renderDownload(idx int, s engine.DownloadSnapshot, barWidth int) string {
 		b.WriteString(errStyle.Render("       ✖ " + s.Err))
 	case engine.StateCanceled:
 		b.WriteString(dimStyle.Render("       已取消"))
+	case engine.StateSeeding:
+		b.WriteString(fmt.Sprintf("       已完成下载，正在做种  •  ↑ %s  •  ratio %.2f  •  peers: %d  •  已保种 %s",
+			utils.FormatBytes(s.Uploaded),
+			s.ShareRatio,
+			s.Peers,
+			utils.FormatDuration(s.SeedElapsed),
+		))
 	default:
 		// 进度条
 		percent := 0.0

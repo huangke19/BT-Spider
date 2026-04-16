@@ -9,9 +9,11 @@
 - 搜索带总超时保护，慢源不会一直拖住整体结果
 - **TUI 实时界面**：多任务进度条同屏刷新，边下边搜不阻塞
 - **Headless CLI**：供脚本 / AI 助手通过子进程调用，支持 JSON 流式输出
+- **Web UI**：浏览器里搜索、加任务、看进度，适合轻量远程使用
 - 中文搜索：CJK 关键词采用 bigram 分词，避免因无空格导致的误过滤
 - 自动拉取 tracker 列表（每 24h 刷新），提升连接成功率
 - 代理支持（`HTTP_PROXY` / `HTTPS_PROXY`）
+- 支持按分享率或保种时长自动停止做种
 
 ## 快速开始
 
@@ -23,6 +25,9 @@ go build -o bt-spider .
 
 # 无头下载器
 go build -o bt-download ./cmd/download
+
+# Web UI
+go build -o bt-web ./cmd/web
 ```
 
 ### TUI 模式（交互式，推荐日常使用）
@@ -109,6 +114,32 @@ TUI 界面会每 500ms 刷新，所有任务的进度条 / 速度 / peers / ETA 
 
 **退出码：** `0` 成功 / `1` 失败 / `2` 参数错误 / `130` 用户中断
 
+### Web UI 模式（浏览器）
+
+```bash
+go run ./cmd/web
+```
+
+更常见的方式是先编译再运行：
+
+```bash
+go build -o bt-web ./cmd/web
+./bt-web
+```
+
+默认打开地址：
+
+```text
+http://127.0.0.1:8080
+```
+
+可选参数：
+
+```text
+-addr <host:port>     Web UI 监听地址（默认 127.0.0.1:8080）
+-dir <path>           下载目录覆盖 config.json
+```
+
 ## 搜索源
 
 | 来源 | 类型 | 接口 |
@@ -141,11 +172,17 @@ TUI 界面会每 500ms 刷新，所有任务的进度条 / 速度 / peers / ETA 
   "max_conns": 80,
   "listen_port": 0,
   "seed": false,
+  "seed_ratio_limit": 1.0,
+  "seed_time_limit": "30m",
   "enable_tracker_list": true
 }
 ```
 
 其中 `listen_port: 0` 表示自动选择可用端口，能减少固定端口被占用导致的启动失败。
+如果开启 `seed: true`，则会在下载完成后继续做种，并在满足以下任一条件时自动停止：
+
+- `seed_ratio_limit`: 分享率达到该值后停止，设为 `0` 表示禁用该条件
+- `seed_time_limit`: 保种达到该时长后停止，例如 `"30m"`、`"2h"`、`"0s"`；设为 `"0s"` 表示禁用该条件
 
 ## 代理
 
@@ -172,6 +209,12 @@ export HTTPS_PROXY=http://127.0.0.1:7890
 ├── cmd/
 │   └── download/
 │       └── main.go           # Headless CLI（脚本/AI 调用）
+│   └── web/
+│       └── main.go           # Web UI 入口
+├── web/
+│   ├── server.go             # Web API + 页面服务
+│   └── static/
+│       └── index.html        # 轻量前端页面
 ├── tui/
 │   └── tui.go                # bubbletea Model/Update/View
 ├── config/
