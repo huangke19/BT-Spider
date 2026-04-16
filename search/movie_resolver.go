@@ -76,7 +76,7 @@ func ResolveMovieSearchInput(raw string) (MovieResolution, bool) {
 	// 2) 先做规范化，再走别名命中
 	norm := normalizeMovieKey(raw)
 	if meta, ok := lookupMovieMeta(norm); ok {
-		query := formatMovieQuery(meta.Title, meta.Year)
+		query := formatMovieQuery(meta.Title, meta.Year) + " 1080P"
 		return MovieResolution{
 			Query:   query,
 			Display: "已解析为: " + query,
@@ -87,7 +87,7 @@ func ResolveMovieSearchInput(raw string) (MovieResolution, bool) {
 	titleKey, year, has1080, ok := parseMovieTitleYear(raw)
 	if ok {
 		if meta, ok := lookupMovieMeta(normalizeMovieKey(titleKey)); ok {
-			query := formatMovieQuery(meta.Title, meta.Year)
+			query := formatMovieQuery(meta.Title, meta.Year) + " 1080P"
 			return MovieResolution{
 				Query:   query,
 				Display: "已解析为: " + query,
