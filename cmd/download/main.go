@@ -77,6 +77,9 @@ func main() {
 	if err := logger.Init(cfg.LogDir, cfg.LogLevel); err != nil {
 		emit("warn", map[string]any{"msg": "日志系统初始化失败: " + err.Error()})
 	}
+	if err := pipeline.SetSearchAuditDBPath(cfg.SearchDBPath); err != nil {
+		emit("warn", map[string]any{"msg": "搜索审计数据库初始化失败: " + err.Error()})
+	}
 	logger.Info("bt-download start", "mode", "headless", "arg", arg, "download_dir", cfg.DownloadDir)
 
 	eng, err := engine.New(cfg)

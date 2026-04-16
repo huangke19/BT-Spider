@@ -19,6 +19,7 @@
 - 聚合 8 个搜索源：ApiBay、BTDigg、BT4G、YTS、EZTV、Nyaa、1337x、TorrentKitty
 - 并发搜索、自动去重、按做种数降序排列
 - 搜索带总超时保护，慢源不会一直拖住整体结果
+- 本地搜索审计数据库：记录每次搜索会话、每个搜索源的成功/失败，以及返回的全部条目（用于后续统计分析）
 - **TUI 实时界面**：多任务进度条同屏刷新，山下搜边不阻塞；状态变更（元数据就绪/完成/失败）通过事件流即时推送，并保留 500ms 轮询刚新进度
 - **Headless CLI**：供脚本 / AI 助手通过子进程调用，支持 JSON 流式输出
 - **弹性 HTTP 客户端**：所有搜索源统一使用带指数退退 + per-host 熔断器的 `ResilientClient`，单源刻宕不影响其他源
@@ -183,9 +184,13 @@ bt> Interstellar 2014 1080P
   "seed": false,
   "seed_ratio_limit": 1.0,
   "seed_time_limit": "30m",
-  "enable_tracker_list": true
+  "enable_tracker_list": true,
+  "search_db_path": ""
 }
 ```
+
+- `search_db_path` 为空时，默认写入 `~/Library/Application Support/BT-Spider/search_history.db`
+- 数据库会自动建表，包含 `search_runs`（搜索会话）、`provider_attempts`（搜索源调用结果）、`provider_items`（搜索条目明细）
 
 其中 `listen_port: 0` 表示自动选择可用端口，能减少固定端口被占用导致的启动失败。
 如果开启 `seed: true`，则会在下载完成后继续做种，并在满足以下任一条件时自动停止：

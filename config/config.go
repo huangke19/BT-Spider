@@ -20,8 +20,9 @@ type Config struct {
 	EnableTrackerList bool    `json:"enable_tracker_list"`
 	TMDBApiKey        string  `json:"tmdb_api_key"`
 	GroqApiKey        string  `json:"groq_api_key"`
-	LogDir            string  `json:"log_dir"`   // 空字符串 = ~/Library/Logs/BT-Spider/
-	LogLevel          string  `json:"log_level"` // debug / info / warn / error，默认 info
+	LogDir            string  `json:"log_dir"`        // 空字符串 = ~/Library/Logs/BT-Spider/
+	LogLevel          string  `json:"log_level"`      // debug / info / warn / error，默认 info
+	SearchDBPath      string  `json:"search_db_path"` // 空字符串 = ~/Library/Application Support/BT-Spider/search_history.db
 }
 
 func DefaultConfig() *Config {

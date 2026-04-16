@@ -25,19 +25,22 @@ func SearchWithTimeout(keyword string, providers []search.Provider, timeout time
 	}
 
 	strictQuery, strictMode := parseStrictMovieQuery(keyword)
+	runID := auditStartRun(keyword, timeout, strictMode, len(providers))
 
 	type providerResult struct {
 		name    string
 		results []search.Result
 		err     error
+		dur     time.Duration
 	}
 	ch := make(chan providerResult, len(providers))
 	pending := make(map[string]struct{}, len(providers))
 	for _, p := range providers {
 		pending[p.Name()] = struct{}{}
 		go func(p search.Provider) {
+			start := time.Now()
 			results, err := p.Search(keyword, 0)
-			ch <- providerResult{name: p.Name(), results: results, err: err}
+			ch <- providerResult{name: p.Name(), results: results, err: err, dur: time.Since(start)}
 		}(p)
 	}
 
@@ -52,6 +55,7 @@ func SearchWithTimeout(keyword string, providers []search.Provider, timeout time
 		select {
 		case pr := <-ch:
 			delete(pending, pr.name)
+			auditRecordProviderResult(runID, pr.name, pr.dur, pr.results, pr.err)
 			if pr.err != nil {
 				logger.Warn("search provider error", "provider", pr.name, "keyword", keyword, "err", pr.err)
 				errs = append(errs, fmt.Sprintf("%s: %v", pr.name, pr.err))
@@ -61,25 +65,35 @@ func SearchWithTimeout(keyword string, providers []search.Provider, timeout time
 			allResults = append(allResults, pr.results...)
 		case <-timer.C:
 			logger.Warn("search timeout", "keyword", keyword, "pending", strings.Join(sortedKeys(pending), ", "))
+			for provider := range pending {
+				auditRecordProviderTimeout(runID, provider, timeout)
+			}
 			results := finalizeResults(allResults, keyword, strictMode, strictQuery)
 			if len(results) > 0 {
 				logger.Info("search done (partial)", "keyword", keyword, "count", len(results))
+				auditFinishRun(runID, "partial_timeout", len(results), "")
 				return results, nil
 			}
-			return nil, fmt.Errorf("搜索超时（%s），未及时返回结果；仍在等待: %s", timeout, strings.Join(sortedKeys(pending), ", "))
+			err := fmt.Errorf("搜索超时（%s），未及时返回结果；仍在等待: %s", timeout, strings.Join(sortedKeys(pending), ", "))
+			auditFinishRun(runID, "timeout_no_results", 0, err.Error())
+			return nil, err
 		}
 	}
 
 	results := finalizeResults(allResults, keyword, strictMode, strictQuery)
 	if len(results) > 0 {
 		logger.Info("search done", "keyword", keyword, "count", len(results))
+		auditFinishRun(runID, "success", len(results), "")
 		return results, nil
 	}
 	if len(errs) > 0 {
 		logger.Warn("search all providers failed", "keyword", keyword, "errors", len(errs))
-		return nil, fmt.Errorf("所有搜索源失败: %s", strings.Join(errs, "; "))
+		err := fmt.Errorf("所有搜索源失败: %s", strings.Join(errs, "; "))
+		auditFinishRun(runID, "all_providers_failed", 0, err.Error())
+		return nil, err
 	}
 	logger.Info("search done (no results)", "keyword", keyword)
+	auditFinishRun(runID, "no_results", 0, "")
 	return nil, nil
 }
 

@@ -10,6 +10,7 @@ import (
 	"github.com/huangke/bt-spider/config"
 	"github.com/huangke/bt-spider/engine"
 	"github.com/huangke/bt-spider/pkg/logger"
+	"github.com/huangke/bt-spider/search/pipeline"
 	"github.com/huangke/bt-spider/tui"
 )
 
@@ -28,6 +29,9 @@ func main() {
 
 	if err := logger.Init(cfg.LogDir, cfg.LogLevel); err != nil {
 		fmt.Fprintf(os.Stderr, "⚠️  日志系统初始化失败（将继续运行但不写日志）: %v\n", err)
+	}
+	if err := pipeline.SetSearchAuditDBPath(cfg.SearchDBPath); err != nil {
+		fmt.Fprintf(os.Stderr, "⚠️  搜索审计数据库初始化失败（将继续运行但不记录搜索明细）: %v\n", err)
 	}
 	logger.Info("bt-spider start", "mode", "tui", "download_dir", cfg.DownloadDir)
 
