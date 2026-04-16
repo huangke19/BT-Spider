@@ -179,14 +179,10 @@ func sourceTrustScore(source string) int {
 		return 4
 	case "apibay", "thepiratebay", "tpb":
 		return 4
-	case "btdigg":
-		return 3
 	case "torrentkitty":
 		return 3
 	case "bt4g":
 		return 2
-	case "eztv", "nyaa":
-		return 1
 	default:
 		return 2
 	}

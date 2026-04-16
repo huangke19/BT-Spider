@@ -6,11 +6,9 @@ import "github.com/huangke/bt-spider/search"
 func DefaultProviders() []search.Provider {
 	return []search.Provider{
 		NewApiBay(),
-		NewBtDig(),
 		NewBT4G(),
-		NewYTS(),
-		NewNyaa(),
 		NewLeet337x(),
 		NewTorrentKitty(),
+		NewYTS(),
 	}
 }

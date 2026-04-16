@@ -10,7 +10,6 @@ import (
 	"github.com/huangke/bt-spider/search"
 )
 
-// YTS 基于 YTS JSON API 的搜索源（电影资源）
 type YTS struct {
 	baseURL string
 	client  *httputil.ResilientClient
@@ -28,25 +27,21 @@ func (y *YTS) Name() string {
 }
 
 type ytsResponse struct {
-	Status string  `json:"status"`
-	Data   ytsData `json:"data"`
+	Data ytsData `json:"data"`
 }
 
 type ytsData struct {
-	MovieCount int        `json:"movie_count"`
-	Movies     []ytsMovie `json:"movies"`
+	Movies []ytsMovie `json:"movies"`
 }
 
 type ytsMovie struct {
-	Title    string       `json:"title"`
-	Year     int          `json:"year"`
+	Title    string       `json:"title_long"`
 	Torrents []ytsTorrent `json:"torrents"`
 }
 
 type ytsTorrent struct {
 	Hash    string `json:"hash"`
 	Quality string `json:"quality"`
-	Type    string `json:"type"`
 	Size    string `json:"size"`
 	Seeds   int    `json:"seeds"`
 	Peers   int    `json:"peers"`
@@ -61,20 +56,19 @@ func (y *YTS) Search(keyword string, page int) ([]search.Result, error) {
 		return nil, err
 	}
 
-	var ytsResp ytsResponse
-	if err := json.Unmarshal(body, &ytsResp); err != nil {
+	var resp ytsResponse
+	if err := json.Unmarshal(body, &resp); err != nil {
 		return nil, fmt.Errorf("解析响应失败: %w", err)
 	}
 
-	if ytsResp.Status != "ok" {
-		return nil, fmt.Errorf("API 状态异常: %s", ytsResp.Status)
-	}
-
 	var results []search.Result
-	for _, movie := range ytsResp.Data.Movies {
-		for _, t := range movie.Torrents {
-			name := fmt.Sprintf("%s (%d) [%s] [%s]", movie.Title, movie.Year, t.Quality, t.Type)
-			result := search.Result{
+	for _, m := range resp.Data.Movies {
+		for _, t := range m.Torrents {
+			if t.Hash == "" {
+				continue
+			}
+			name := fmt.Sprintf("%s [%s] [%s]", m.Title, t.Quality, t.Size)
+			results = append(results, search.Result{
 				Name:     name,
 				Size:     t.Size,
 				Seeders:  t.Seeds,
@@ -82,10 +76,8 @@ func (y *YTS) Search(keyword string, page int) ([]search.Result, error) {
 				InfoHash: t.Hash,
 				Source:   y.Name(),
 				Magnet:   search.BuildMagnet(t.Hash, url.QueryEscape(name)),
-			}
-			results = append(results, result)
+			})
 		}
 	}
-
 	return results, nil
 }
