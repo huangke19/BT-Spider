@@ -25,14 +25,15 @@ type tmdbMovie struct {
 // apiKey 应为 TMDB API Read Access Token（Bearer token）。
 func SearchTMDB(query, apiKey string) (movieMeta, bool) {
 	endpoint := fmt.Sprintf(
-		"https://api.themoviedb.org/3/search/movie?api_key=%s&query=%s&language=en-US&page=1",
-		apiKey, url.QueryEscape(query),
+		"https://api.themoviedb.org/3/search/movie?query=%s&language=en-US&page=1",
+		url.QueryEscape(query),
 	)
 
 	req, err := http.NewRequest(http.MethodGet, endpoint, nil)
 	if err != nil {
 		return movieMeta{}, false
 	}
+	req.Header.Set("Authorization", "Bearer "+apiKey)
 	req.Header.Set("Accept", "application/json")
 
 	resp, err := tmdbClient.Do(req)
