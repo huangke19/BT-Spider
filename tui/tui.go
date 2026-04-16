@@ -168,7 +168,7 @@ func (m Model) handleCommand() (tea.Model, tea.Cmd) {
 		}
 		m.status = fmt.Sprintf("搜索中: %s ...", keyword)
 		m.isErr = false
-		return m, searchCmd(keyword)
+		return m, searchCmd(m.engine, keyword)
 
 	case strings.HasPrefix(lower, "c "):
 		numStr := strings.TrimSpace(raw[2:])
@@ -210,9 +210,12 @@ func tickCmd() tea.Cmd {
 	})
 }
 
-func searchCmd(keyword string) tea.Cmd {
+func searchCmd(eng *engine.Engine, keyword string) tea.Cmd {
 	return func() tea.Msg {
 		results, err := search.Search(keyword, search.DefaultProviders())
+		if err == nil && len(results) > 0 {
+			results = eng.ResolveSizes(results, 8*time.Second)
+		}
 		return searchDoneMsg{keyword: keyword, results: results, err: err}
 	}
 }

@@ -90,6 +90,9 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		results = results[:limit]
 	}
 
+	// 对大小仍为"未知"的结果，尝试通过 DHT 拉取元数据补充大小（最多等 8s）
+	results = s.engine.ResolveSizes(results, 8*time.Second)
+
 	writeJSON(w, http.StatusOK, map[string]any{
 		"query":   req.Query,
 		"results": results,

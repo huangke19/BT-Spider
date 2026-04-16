@@ -152,7 +152,7 @@ func sortedKeys(m map[string]struct{}) []string {
 	return keys
 }
 
-// dedup 按 info_hash 去重，保留做种数更高的
+// dedup 按 info_hash 去重，保留做种数更高的；若胜者大小未知则从其他来源借用。
 func dedup(results []Result) []Result {
 	seen := make(map[string]int) // info_hash -> index in output
 	var out []Result
@@ -164,8 +164,17 @@ func dedup(results []Result) []Result {
 			continue
 		}
 		if idx, ok := seen[hash]; ok {
-			if r.Seeders > out[idx].Seeders {
-				out[idx] = r
+			existing := &out[idx]
+			if r.Seeders > existing.Seeders {
+				knownSize := existing.Size
+				*existing = r
+				// 胜者大小未知时，从之前的记录里借用已知大小
+				if existing.Size == "未知" && knownSize != "未知" {
+					existing.Size = knownSize
+				}
+			} else if existing.Size == "未知" && r.Size != "未知" {
+				// 做种数不更高，但能补充大小
+				existing.Size = r.Size
 			}
 		} else {
 			seen[hash] = len(out)
