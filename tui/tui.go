@@ -11,9 +11,8 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/mattn/go-runewidth"
 
-	"github.com/huangke/bt-spider/engine"
+	"github.com/huangke/bt-spider/app"
 	"github.com/huangke/bt-spider/pkg/utils"
-	"github.com/huangke/bt-spider/search"
 )
 
 const version = "0.6.0"
@@ -24,12 +23,12 @@ type tickMsg time.Time
 
 type searchDoneMsg struct {
 	keyword string
-	results []search.Result
+	results []app.SearchResult
 	err     error
 }
 
 type resolveDoneMsg struct {
-	resolved search.MovieResolution
+	resolved app.MovieResolution
 	ok       bool
 	original string
 }
@@ -69,19 +68,19 @@ var (
 // --- Model ---
 
 type Model struct {
-	engine  *engine.Engine
+	app     *app.App
 	input   textinput.Model
-	results []search.Result
+	results []app.SearchResult
 	status  string
 	isErr   bool
 	width   int
 	height  int
 	// 最近一次拉到的下载快照（View 期间复用）
-	snapshots []engine.DownloadSnapshot
+	snapshots []app.DownloadSnapshot
 }
 
 // New 创建一个初始化好的 Model
-func New(eng *engine.Engine) Model {
+func New(a *app.App) Model {
 	ti := textinput.New()
 	ti.Placeholder = "直接输入片名 / search <关键词> / <序号> / magnet:... / c <序号> / q"
 	ti.Prompt = "bt> "
@@ -89,9 +88,9 @@ func New(eng *engine.Engine) Model {
 	ti.Focus()
 
 	return Model{
-		engine: eng,
+		app:    a,
 		input:  ti,
-		status: fmt.Sprintf("下载目录: %s", eng.Config().DownloadDir),
+		status: fmt.Sprintf("下载目录: %s", a.DownloadDir()),
 	}
 }
 
@@ -110,7 +109,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.input.Width = msg.Width - 6
 
 	case tickMsg:
-		m.snapshots = m.engine.ListDownloads()
+		m.snapshots = m.app.ListDownloads()
 		return m, tickCmd()
 
 	case resolveDoneMsg:
@@ -121,7 +120,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.status = msg.resolved.Display + " ..."
 		m.isErr = false
-		return m, searchCmd(m.engine, msg.resolved.Query)
+		return m, searchCmd(m.app, msg.resolved.Query)
 
 	case searchDoneMsg:
 		if msg.err != nil {
@@ -174,7 +173,7 @@ func (m Model) handleCommand() (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 
 	case lower == "clear":
-		n := m.engine.ClearFinished()
+		n := m.app.ClearFinished()
 		return m, statusCmd(fmt.Sprintf("已清理 %d 个已结束任务", n), false)
 
 	case strings.HasPrefix(lower, "search "):
@@ -184,17 +183,17 @@ func (m Model) handleCommand() (tea.Model, tea.Cmd) {
 		}
 		m.status = fmt.Sprintf("搜索中: %s ...", keyword)
 		m.isErr = false
-		return m, searchCmd(m.engine, keyword)
+		return m, searchCmd(m.app, keyword)
 
 	case strings.HasPrefix(lower, "movie "):
 		query := strings.TrimSpace(raw[6:])
 		if query == "" {
 			return m, statusCmd("请输入电影名称", true)
 		}
-		if resolved, ok := search.ResolveMovieSearchInput(query); ok {
+		if resolved, ok := m.app.ResolveLocal(query); ok {
 			m.status = resolved.Display + " ..."
 			m.isErr = false
-			return m, searchCmd(m.engine, resolved.Query)
+			return m, searchCmd(m.app, resolved.Query)
 		}
 		return m, statusCmd("无法识别电影名，试试：movie Inception 2010 1080P", true)
 
@@ -208,79 +207,34 @@ func (m Model) handleCommand() (tea.Model, tea.Cmd) {
 			return m, statusCmd("下载序号超出范围", true)
 		}
 		id := m.snapshots[num-1].ID
-		if m.engine.RemoveDownload(id) {
+		if m.app.CancelDownload(id) {
 			return m, statusCmd(fmt.Sprintf("已取消任务 #%d", num), false)
 		}
 		return m, statusCmd("取消失败", true)
 
 	case strings.HasPrefix(raw, "magnet:"):
-		return m, addMagnetCmd(m.engine, raw, "")
+		return m, addMagnetCmd(m.app, raw, "")
 
 	default:
 		// 尝试解析为序号
 		num, err := strconv.Atoi(raw)
 		if err != nil {
 			// 先试本地快速解析（无网络延迟）
-			if resolved, ok := search.ResolveMovieSearchInput(raw); ok {
+			if resolved, ok := m.app.ResolveLocal(raw); ok {
 				m.status = resolved.Display + " ..."
 				m.isErr = false
-				return m, searchCmd(m.engine, resolved.Query)
+				return m, searchCmd(m.app, resolved.Query)
 			}
 			// 本地不认识 → 走 NLP pipeline（TMDB / Groq），显示 loading
 			m.status = "正在识别: " + raw + " ..."
 			m.isErr = false
-			return m, resolveCmd(m.engine, raw)
+			return m, resolveCmd(m.app, raw)
 		}
 		if num < 1 || num > len(m.results) {
 			return m, statusCmd("搜索结果序号超出范围", true)
 		}
 		r := m.results[num-1]
-		return m, addMagnetCmd(m.engine, r.Magnet, r.Name)
-	}
-}
-
-// --- Commands (tea.Cmd 工厂) ---
-
-func tickCmd() tea.Cmd {
-	return tea.Tick(500*time.Millisecond, func(t time.Time) tea.Msg {
-		return tickMsg(t)
-	})
-}
-
-func searchCmd(eng *engine.Engine, keyword string) tea.Cmd {
-	return func() tea.Msg {
-		results, err := search.Search(keyword, search.DefaultProviders())
-		if err == nil && len(results) > 0 {
-			results = eng.ResolveSizes(results, 8*time.Second)
-		}
-		return searchDoneMsg{keyword: keyword, results: results, err: err}
-	}
-}
-
-func addMagnetCmd(eng *engine.Engine, magnet, name string) tea.Cmd {
-	return func() tea.Msg {
-		_, err := eng.AddMagnetAsync(magnet)
-		if err != nil {
-			return statusMsg{text: "添加下载失败: " + err.Error(), isErr: true}
-		}
-		hint := name
-		if hint == "" {
-			hint = "新任务"
-		}
-		return statusMsg{text: "已加入下载队列: " + hint, isErr: false}
-	}
-}
-
-func resolveCmd(eng *engine.Engine, raw string) tea.Cmd {
-	return func() tea.Msg {
-		resolved, ok := search.NLPResolve(raw, eng.Config())
-		return resolveDoneMsg{resolved: resolved, ok: ok, original: raw}
-	}
-}
-
-func statusCmd(text string, isErr bool) tea.Cmd {
-	return func() tea.Msg {
-		return statusMsg{text: text, isErr: isErr}
+		return m, addMagnetCmd(m.app, r.Magnet, r.Name)
 	}
 }
 
@@ -292,7 +246,7 @@ func (m Model) View() string {
 	// 标题
 	b.WriteString(titleStyle.Render(fmt.Sprintf("🕷  BT-Spider v%s", version)))
 	b.WriteString("\n")
-	b.WriteString(dimStyle.Render("下载目录: " + m.engine.Config().DownloadDir))
+	b.WriteString(dimStyle.Render("下载目录: " + m.app.DownloadDir()))
 	b.WriteString("\n")
 
 	// 搜索结果区
@@ -375,7 +329,7 @@ func (m Model) View() string {
 }
 
 // renderDownload 渲染单个下载任务
-func renderDownload(idx int, s engine.DownloadSnapshot, barWidth int) string {
+func renderDownload(idx int, s app.DownloadSnapshot, barWidth int) string {
 	var b strings.Builder
 
 	name := truncate(s.Name, 60)
@@ -384,13 +338,13 @@ func renderDownload(idx int, s engine.DownloadSnapshot, barWidth int) string {
 	b.WriteString("\n")
 
 	switch s.State {
-	case engine.StateWaitingMeta:
+	case app.StateWaitingMeta:
 		b.WriteString(dimStyle.Render("       ⏳ 正在连接 peers、获取元数据..."))
-	case engine.StateFailed:
+	case app.StateFailed:
 		b.WriteString(errStyle.Render("       ✖ " + s.Err))
-	case engine.StateCanceled:
+	case app.StateCanceled:
 		b.WriteString(dimStyle.Render("       已取消"))
-	case engine.StateSeeding:
+	case app.StateSeeding:
 		b.WriteString(fmt.Sprintf("       已完成下载，正在做种  •  ↑ %s  •  ratio %.2f  •  peers: %d  •  已保种 %s",
 			utils.FormatBytes(s.Uploaded),
 			s.ShareRatio,
@@ -408,7 +362,7 @@ func renderDownload(idx int, s engine.DownloadSnapshot, barWidth int) string {
 		if s.ETA > 0 {
 			eta = utils.FormatDuration(s.ETA)
 		}
-		if s.State == engine.StateDone {
+		if s.State == app.StateDone {
 			eta = "完成"
 		}
 		b.WriteString(fmt.Sprintf("       %s  %5.1f%%", bar, percent))

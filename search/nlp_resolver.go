@@ -10,10 +10,10 @@ import (
 
 // NLPResolve 自然语言电影搜索 pipeline：
 //
-//	L1 意图剥离 + 序号规范化（即时）
-//	L2 本地别名库（即时）
-//	L3 TMDB API（~200ms，需 tmdb_api_key）
-//	L4 Groq AI（~500ms，需 groq_api_key）
+//	预处理: 意图剥离 + 中文数字规范化
+//	解析链: alias → tmdb → groq （由 DefaultResolverChain 构造）
+//
+// 新增解析层：在 search/resolver.go 里实现 Resolver，加入 DefaultResolverChain。
 func NLPResolve(raw string, cfg *config.Config) (MovieResolution, bool) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -22,51 +22,23 @@ func NLPResolve(raw string, cfg *config.Config) (MovieResolution, bool) {
 
 	logger.Info("nlp resolve start", "input", raw)
 
-	// L1: 剥离意图词 + 中文序号规范化
+	// 预处理：剥离意图词 + 中文序号规范化
 	cleaned := stripMovieIntent(raw)
 	cleaned = normalizeChineseNumbers(cleaned)
-	logger.Debug("nlp L1 clean", "input", raw, "cleaned", cleaned)
+	logger.Debug("nlp preprocess", "input", raw, "cleaned", cleaned)
 
-	// L2: 本地别名（含严格格式识别），先试 cleaned，再试原始输入
-	if r, ok := ResolveMovieSearchInput(cleaned); ok {
-		logger.Info("nlp L2 hit (alias, cleaned)", "input", cleaned, "query", r.Query)
+	chain := DefaultResolverChain(cfg)
+
+	// 先用预处理后的输入尝试整条链
+	if r, ok := chain.Resolve(cleaned); ok {
 		return r, true
 	}
+	// 预处理可能过度剥离，alias 层再用原始输入兜底一次
 	if cleaned != raw {
-		if r, ok := ResolveMovieSearchInput(raw); ok {
-			logger.Info("nlp L2 hit (alias, raw)", "input", raw, "query", r.Query)
+		if r, ok := (aliasResolver{}).Resolve(raw); ok {
+			logger.Info("resolver hit", "resolver", "alias", "input", raw, "query", r.Query, "note", "raw fallback")
 			return r, true
 		}
-	}
-
-	// L3: TMDB
-	if cfg.TMDBApiKey != "" {
-		if meta, ok := SearchTMDB(cleaned, cfg.TMDBApiKey); ok {
-			query := formatMovieQuery(meta.Title, meta.Year) + " 1080P"
-			logger.Info("nlp L3 hit (tmdb)", "input", cleaned, "query", query, "year", meta.Year)
-			return MovieResolution{
-				Query:   query,
-				Display: "TMDB 解析: " + query,
-			}, true
-		}
-		logger.Warn("nlp L3 miss (tmdb)", "input", cleaned)
-	} else {
-		logger.Debug("nlp L3 skipped (no tmdb key)")
-	}
-
-	// L4: Groq
-	if cfg.GroqApiKey != "" {
-		if meta, ok := ResolveWithGroq(cleaned, cfg.GroqApiKey); ok {
-			query := formatMovieQuery(meta.Title, meta.Year) + " 1080P"
-			logger.Info("nlp L4 hit (groq)", "input", cleaned, "query", query, "year", meta.Year)
-			return MovieResolution{
-				Query:   query,
-				Display: "AI 解析: " + query,
-			}, true
-		}
-		logger.Warn("nlp L4 miss (groq)", "input", cleaned)
-	} else {
-		logger.Debug("nlp L4 skipped (no groq key)")
 	}
 
 	logger.Error("nlp resolve failed", "input", raw, "cleaned", cleaned)

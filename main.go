@@ -6,8 +6,10 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/huangke/bt-spider/app"
 	"github.com/huangke/bt-spider/config"
 	"github.com/huangke/bt-spider/engine"
+	"github.com/huangke/bt-spider/pkg/logger"
 	"github.com/huangke/bt-spider/tui"
 )
 
@@ -24,6 +26,11 @@ func main() {
 		break
 	}
 
+	if err := logger.Init(cfg.LogDir, cfg.LogLevel); err != nil {
+		fmt.Fprintf(os.Stderr, "⚠️  日志系统初始化失败（将继续运行但不写日志）: %v\n", err)
+	}
+	logger.Info("bt-spider start", "mode", "tui", "download_dir", cfg.DownloadDir)
+
 	eng, err := engine.New(cfg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "❌ 启动失败: %v\n", err)
@@ -31,7 +38,9 @@ func main() {
 	}
 	defer eng.Close()
 
-	p := tea.NewProgram(tui.New(eng), tea.WithAltScreen())
+	a := app.New(eng, nil)
+
+	p := tea.NewProgram(tui.New(a), tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "❌ TUI 运行出错: %v\n", err)
 		os.Exit(1)

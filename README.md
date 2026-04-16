@@ -8,7 +8,6 @@
 所有核心流程、错误、HTTP 请求、provider 搜索、下载状态机均有结构化日志，便于排查问题。
 
 - 日志以 JSON 格式写入 `~/Library/Logs/BT-Spider/bt-spider-YYYY-MM-DD.log`，可用 `jq`/`grep` 检索。
-- Web API 日志支持 HTTP 状态码、耗时、路径、方法，分 info/warn/error 级别。
 - 下载、搜索、DHT、provider 失败/超时等场景均有详细日志。
 - 日志目录/级别可通过 `config.json` 配置。
 
@@ -21,7 +20,6 @@
 - 搜索带总超时保护，慢源不会一直拖住整体结果
 - **TUI 实时界面**：多任务进度条同屏刷新，边下边搜不阻塞
 - **Headless CLI**：供脚本 / AI 助手通过子进程调用，支持 JSON 流式输出
-- **Web UI**：浏览器里搜索、加任务、看进度，适合轻量远程使用
 - 中文搜索：CJK 关键词采用 bigram 分词，避免因无空格导致的误过滤
 - 自动拉取 tracker 列表（每 24h 刷新），提升连接成功率
 - 代理支持（`HTTP_PROXY` / `HTTPS_PROXY`）
@@ -37,9 +35,6 @@ go build -o bt-spider .
 
 # 无头下载器
 go build -o bt-download ./cmd/download
-
-# Web UI
-go build -o bt-web ./cmd/web
 ```
 
 ### TUI 模式（交互式，推荐日常使用）
@@ -66,7 +61,7 @@ TUI 界面会每 500ms 刷新，所有任务的进度条 / 速度 / peers / ETA 
 | `search <关键词>` | 搜索（异步，不阻塞输入） |
 | `movie <片名 [年份] [1080P]>` | 智能电影搜索：自动识别中英文别名、补全年份，结果严格按标题/分辨率/做种数过滤 |
 | `<片名 年份 1080P>` | 直接输入带年份和 1080P 的英文片名，触发严格电影搜索模式（同 `movie`） |
-（2026-04-16 起，日志系统已覆盖 engine/trackers.go、cmd/web/main.go 等所有模块）
+（2026-04-16 起，日志系统已覆盖所有模块）
 | `<序号>` | 下载搜索结果中的对应条目 |
 | `magnet:?xt=...` | 直接添加磁力链接 |
 | `c <下载序号>` | 取消指定下载任务 |
@@ -147,32 +142,6 @@ bt> Interstellar 2014 1080P
 
 **退出码：** `0` 成功 / `1` 失败 / `2` 参数错误 / `130` 用户中断
 
-### Web UI 模式（浏览器）
-
-```bash
-go run ./cmd/web
-```
-
-更常见的方式是先编译再运行：
-
-```bash
-go build -o bt-web ./cmd/web
-./bt-web
-```
-
-默认打开地址：
-
-```text
-http://127.0.0.1:8080
-```
-
-可选参数：
-
-```text
--addr <host:port>     Web UI 监听地址（默认 127.0.0.1:8080）
--dir <path>           下载目录覆盖 config.json
-```
-
 ## 搜索源
 
 | 来源 | 类型 | 接口 |
@@ -242,12 +211,6 @@ export HTTPS_PROXY=http://127.0.0.1:7890
 ├── cmd/
 │   └── download/
 │       └── main.go           # Headless CLI（脚本/AI 调用）
-│   └── web/
-│       └── main.go           # Web UI 入口
-├── web/
-│   ├── server.go             # Web API + 页面服务
-│   └── static/
-│       └── index.html        # 轻量前端页面
 ├── tui/
 │   └── tui.go                # bubbletea Model/Update/View
 ├── config/

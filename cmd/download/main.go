@@ -29,6 +29,7 @@ import (
 
 	"github.com/huangke/bt-spider/config"
 	"github.com/huangke/bt-spider/engine"
+	"github.com/huangke/bt-spider/pkg/logger"
 	"github.com/huangke/bt-spider/pkg/utils"
 	"github.com/huangke/bt-spider/search"
 )
@@ -71,6 +72,11 @@ func main() {
 	if *flagDir != "" {
 		cfg.DownloadDir = *flagDir
 	}
+
+	if err := logger.Init(cfg.LogDir, cfg.LogLevel); err != nil {
+		emit("warn", map[string]any{"msg": "日志系统初始化失败: " + err.Error()})
+	}
+	logger.Info("bt-download start", "mode", "headless", "arg", arg, "download_dir", cfg.DownloadDir)
 
 	eng, err := engine.New(cfg)
 	if err != nil {
