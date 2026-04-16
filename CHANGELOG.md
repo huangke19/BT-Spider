@@ -1,7 +1,41 @@
 # CHANGELOG
 
 
-## 2026-04-16
+## 2026-04-17
+
+### 架构重构（Day 3a – Day 9）
+
+**Day 3a：app/ 业务编排层**
+- 新增 `app/app.go`，作为 TUI/CLI 与 engine/search 之间的唯一依赖边界
+- TUI 不再直接 import `engine` / `search`，所有业务能力通过 `app.App` 暴露
+
+**Day 4-5：search/ 拆包**
+- `search/` 平铺结构拆分为三个子包：
+  - `search/providers/`：8 个搜索源独立实现 + `DefaultProviders()` 注册表
+  - `search/query/`：用户输入 → 标准化搜索词（本地别名解析、NLP、TMDB、Groq）
+  - `search/pipeline/`：搜索编排、去重、关键词过滤、严格电影评分、BEP 15 做种数补全
+  - `search/types.go`：共享 `Result`、`Provider` 接口、`MovieResolution`
+  - `search/parse.go`：共享解析工具（IsCJK、ParseMovieTitleYear 等）
+
+**Day 6：ResilientClient**
+- 新增 `pkg/httputil/resilient.go`：带指数退避 + jitter 重试、per-host 熔断器的 HTTP 客户端
+- 所有 8 个 provider 及 `search/query/tmdb.go` 全部切换，移除重复的手动 HTTP 样板代码
+- 配套 3 个单元测试（重试成功、4xx 不重试、熔断器开启/半开/重置）
+
+**Day 7-8：Engine 离散事件流 + TUI 事件驱动**
+- 新增 `engine/event.go`：定义 `Event` 类型与 6 种 `EventType`（MetaReceived / DownloadDone / SeedingStarted / SeedingStopped / Failed / Canceled）
+- Engine 内置 buffered channel（容量 64），状态变更即时 emit，channel 满时静默丢弃不阻塞生产者
+- `app.App` 新增 `WaitEvent()` 方法，向上层暴露事件流
+- TUI 新增 `eventCmd`：通过 goroutine 阻塞等待事件，触发后立即刷新快照并回到等待；保留 500ms 轮询以持续刷新下载进度
+
+**Day 9：TorrentHandle 接口 + 状态机单元测试**
+- 新增 `engine/handle.go`：`TorrentHandle` 接口（`BytesCompleted` / `ActivePeers` / `BytesUploaded` / `Drop`），`realHandle` 包装真实 torrent；`Download` 依赖接口而非具体类型
+- 新增 `engine/download_test.go`：9 个状态机单元测试，使用 `mockHandle` 完全脱离 BT 客户端：
+  - 初始状态、快照字段正确性
+  - Cancel（含幂等）、setFailed + 事件断言
+  - watchLifecycle 完整生命周期：无做种完成、做种达分享率停、做种达时间限停、取消中断生命周期
+
+
 
 - 日志系统全面升级：所有核心流程、错误、HTTP 请求、provider 搜索、下载状态机均有结构化日志，便于排查问题。
 - engine/trackers.go、cmd/web/main.go 等历史遗留 log.Printf 均已迁移为结构化日志

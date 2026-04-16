@@ -40,8 +40,8 @@ func (b *BtDig) Search(keyword string, page int) ([]search.Result, error) {
 }
 
 var (
-	btdigNamePattern  = regexp.MustCompile(`<div class="torrent_name">.*?<a href="/([0-9a-fA-F]{40})"[^>]*>(.+?)</a>`)
-	btdigSizePattern  = regexp.MustCompile(`<span class="torrent_size"[^>]*>([^<]+)</span>`)
+	btdigNamePattern = regexp.MustCompile(`<div class="torrent_name">.*?<a href="/([0-9a-fA-F]{40})"[^>]*>(.+?)</a>`)
+	btdigSizePattern = regexp.MustCompile(`<span class="torrent_size"[^>]*>([^<]+)</span>`)
 )
 
 func (b *BtDig) parseHTML(html string) ([]search.Result, error) {

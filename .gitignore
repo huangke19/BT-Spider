@@ -1,5 +1,7 @@
 # Binary
 bt-spider
+bt-download
+bt-web
 
 # IDE
 .idea/
@@ -16,3 +18,7 @@ config.json
 
 # Downloads
 *.torrent
+
+# Go build/module cache (本地缓存，无需进仓库)
+.gomodcache/
+.gocache/

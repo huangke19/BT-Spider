@@ -8,6 +8,7 @@
 所有核心流程、错误、HTTP 请求、provider 搜索、下载状态机均有结构化日志，便于排查问题。
 
 - 日志以 JSON 格式写入 `~/Library/Logs/BT-Spider/bt-spider-YYYY-MM-DD.log`，可用 `jq`/`grep` 检索。
+- Web API 日志支持 HTTP 状态码、耗时、路径、方法，分 info/warn/error 级别。
 - 下载、搜索、DHT、provider 失败/超时等场景均有详细日志。
 - 日志目录/级别可通过 `config.json` 配置。
 
@@ -18,8 +19,9 @@
 - 聚合 8 个搜索源：ApiBay、BTDigg、BT4G、YTS、EZTV、Nyaa、1337x、TorrentKitty
 - 并发搜索、自动去重、按做种数降序排列
 - 搜索带总超时保护，慢源不会一直拖住整体结果
-- **TUI 实时界面**：多任务进度条同屏刷新，边下边搜不阻塞
+- **TUI 实时界面**：多任务进度条同屏刷新，山下搜边不阻塞；状态变更（元数据就绪/完成/失败）通过事件流即时推送，并保留 500ms 轮询刚新进度
 - **Headless CLI**：供脚本 / AI 助手通过子进程调用，支持 JSON 流式输出
+- **弹性 HTTP 客户端**：所有搜索源统一使用带指数退退 + per-host 熔断器的 `ResilientClient`，单源刻宕不影响其他源
 - 中文搜索：CJK 关键词采用 bigram 分词，避免因无空格导致的误过滤
 - 自动拉取 tracker 列表（每 24h 刷新），提升连接成功率
 - 代理支持（`HTTP_PROXY` / `HTTPS_PROXY`）
@@ -61,7 +63,7 @@ TUI 界面会每 500ms 刷新，所有任务的进度条 / 速度 / peers / ETA 
 | `search <关键词>` | 搜索（异步，不阻塞输入） |
 | `movie <片名 [年份] [1080P]>` | 智能电影搜索：自动识别中英文别名、补全年份，结果严格按标题/分辨率/做种数过滤 |
 | `<片名 年份 1080P>` | 直接输入带年份和 1080P 的英文片名，触发严格电影搜索模式（同 `movie`） |
-（2026-04-16 起，日志系统已覆盖所有模块）
+（2026-04-16 起，日志系统已覆盖 engine/trackers.go、cmd/web/main.go 等所有模块）
 | `<序号>` | 下载搜索结果中的对应条目 |
 | `magnet:?xt=...` | 直接添加磁力链接 |
 | `c <下载序号>` | 取消指定下载任务 |
@@ -142,17 +144,22 @@ bt> Interstellar 2014 1080P
 
 **退出码：** `0` 成功 / `1` 失败 / `2` 参数错误 / `130` 用户中断
 
+### Web UI 模式（浏览器）
+
+> Web UI 已在代码重构中移除，当前版本只保留 TUI 和 Headless 两种模式。
+
 ## 搜索源
 
 | 来源 | 类型 | 接口 |
 |------|------|------|
 | ApiBay (TPB) | 综合 | JSON API |
-| BTDigg | 综合 (DHT) | JSON API |
+| BTDigg | 综合 (DHT) | HTML 爬取 |
 | BT4G | 综合 | RSS |
 | YTS | 电影 | JSON API |
 | EZTV | 剧集 | JSON API |
 | Nyaa | 动漫 | RSS |
 | 1337x | 综合 | HTML 爬取 |
+| TorrentKitty | 综合 | HTML 爬取 |
 
 ## 下载
 
@@ -207,35 +214,56 @@ export HTTPS_PROXY=http://127.0.0.1:7890
 
 ```
 .
-├── main.go                   # TUI 主入口（bubbletea）
+├── main.go                       # TUI 主入口（bubbletea）
+├── app/
+│   └── app.go                    # 业务编排层（UI 与 engine/search 之间的桥梁）
 ├── cmd/
 │   └── download/
-│       └── main.go           # Headless CLI（脚本/AI 调用）
+│       └── main.go               # Headless CLI（脚本/AI 调用）
 ├── tui/
-│   └── tui.go                # bubbletea Model/Update/View
+│   ├── tui.go                    # bubbletea Model/Update/View，事件驱动
+│   └── cmds.go                   # tea.Cmd 工厂（异步副作用与 engine 事件订阅）
 ├── config/
-│   └── config.go             # 配置（下载目录、最大结果数、连接数等）
+│   └── config.go                 # 配置（下载目录、最大结果数、连接数等）
 ├── engine/
-│   ├── engine.go             # 下载引擎、任务注册表
-│   ├── download.go           # 异步下载、状态机、EWMA 速度/ETA
-│   └── trackers.go           # Tracker 列表自动更新
+│   ├── engine.go                 # 下载引擎、任务注册表、事件 channel
+│   ├── event.go                  # 离散状态变更事件（MetaReceived/Done/Seeding/…）
+│   ├── handle.go                 # TorrentHandle 接口（便于单元测试 mock）
+│   ├── download.go               # 异步下载、状态机、EWMA 速度/ETA
+│   ├── download_test.go          # Download 状态机 9 个单元测试
+│   ├── resolve.go                # DHT 补全种子大小
+│   └── trackers.go               # Tracker 列表自动更新
 ├── search/
-│   ├── search.go             # Provider 接口、并发搜索、CJK bigram 过滤
-│   ├── movie_resolver.go     # 电影自然语言输入解析（中英文别名、年份补全）
-│   ├── strict_movie.go       # 严格电影结果过滤与评分（分辨率/做种/文件大小）
-│   ├── filter_test.go        # 过滤器单元测试
-│   ├── apibay.go             # ThePirateBay（JSON API）
-│   ├── btdig.go              # BTDigg（HTML 爬取）
-│   ├── bt4g.go               # BT4G（RSS）
-│   ├── yts.go                # YTS（JSON API，电影）
-│   ├── eztv.go               # EZTV（JSON API，剧集）
-│   ├── nyaa.go               # Nyaa（RSS，动漫）
-│   └── 1337x.go              # 1337x（HTML 爬取）
+│   ├── types.go                  # 共享域类型：Result、Provider 接口、MovieResolution
+│   ├── parse.go                  # 共享解析工具：IsCJK、ParseMovieTitleYear 等
+│   ├── providers/                # 各搜索源实现（8 个）
+│   │   ├── registry.go           # DefaultProviders()
+│   │   ├── apibay.go             # ThePirateBay
+│   │   ├── btdig.go              # BTDigg
+│   │   ├── bt4g.go               # BT4G
+│   │   ├── yts.go                # YTS
+│   │   ├── eztv.go               # EZTV
+│   │   ├── nyaa.go               # Nyaa
+│   │   ├── leet337x.go           # 1337x
+│   │   └── torrentkitty.go       # TorrentKitty
+│   ├── query/                    # 用户输入 → 标准化搜索词
+│   │   ├── resolver.go           # Resolver 接口与链式组合
+│   │   ├── movie_resolver.go     # 本地别名 + 严格格式解析（无网络）
+│   │   ├── nlp_resolver.go       # NLP 预处理（中文数字、意图清洗）
+│   │   ├── tmdb.go               # TMDB API 标题标准化
+│   │   └── groq_resolver.go      # Groq LLM 兜底
+│   └── pipeline/                 # 搜索编排与后处理
+│       ├── search.go             # Search/SearchWithTimeout、去重、关键词过滤
+│       ├── strict_movie.go       # 严格电影过滤与评分
+│       └── scrape.go             # BEP 15 UDP 补全做种数
 └── pkg/
     ├── httputil/
-    │   └── client.go         # 共享 HTTP 客户端（代理、UA、超时）
+    │   ├── client.go             # 基础 HTTP 客户端（代理、UA、超时）
+    │   └── resilient.go          # ResilientClient（自动重试 + per-host 熔断器）
+    ├── logger/
+    │   └── logger.go             # 结构化日志（JSON，写入 ~/Library/Logs/BT-Spider/）
     └── utils/
-        └── format.go         # FormatBytes, FormatDuration, ProgressBar
+        └── format.go             # FormatBytes、FormatDuration
 ```
 
 ## 相关项目
