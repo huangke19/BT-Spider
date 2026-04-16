@@ -4,8 +4,9 @@
 
 ## 功能
 
-- 聚合 7 个搜索源：ApiBay、BTDigg、BT4G、YTS、EZTV、Nyaa、1337x
+- 聚合 8 个搜索源：ApiBay、BTDigg、BT4G、YTS、EZTV、Nyaa、1337x、TorrentKitty
 - 并发搜索、自动去重、按做种数降序排列
+- 搜索带总超时保护，慢源不会一直拖住整体结果
 - **TUI 实时界面**：多任务进度条同屏刷新，边下边搜不阻塞
 - **Headless CLI**：供脚本 / AI 助手通过子进程调用，支持 JSON 流式输出
 - 中文搜索：CJK 关键词采用 bigram 分词，避免因无空格导致的误过滤
@@ -125,8 +126,26 @@ TUI 界面会每 500ms 刷新，所有任务的进度条 / 速度 / peers / ETA 
 文件保存至 `~/Downloads/BT-Spider/`，可在 `config.json` 或 `--dir` 参数中覆盖。
 
 下载时会自动从 [trackerslist.com](https://trackerslist.com/best.txt) 拉取最新 tracker 列表（每 24 小时刷新），提升连接成功率。
+程序启动时会先使用内置 fallback trackers，远端列表在后台异步刷新，不再阻塞启动。
 
 若 2 分钟内未能获取种子元数据（通常是 peer 数不足），任务会标记为失败。
+
+## 配置
+
+可选的 `config.json` 示例：
+
+```json
+{
+  "download_dir": "/Users/you/Downloads/BT-Spider",
+  "max_results": 100,
+  "max_conns": 80,
+  "listen_port": 0,
+  "seed": false,
+  "enable_tracker_list": true
+}
+```
+
+其中 `listen_port: 0` 表示自动选择可用端口，能减少固定端口被占用导致的启动失败。
 
 ## 代理
 

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"sync"
-	"time"
 
 	"github.com/anacrolix/torrent"
 	"github.com/huangke/bt-spider/config"
@@ -26,7 +25,7 @@ func New(cfg *config.Config) (*Engine, error) {
 
 	clientCfg := torrent.NewDefaultClientConfig()
 	clientCfg.DataDir = cfg.DownloadDir
-	clientCfg.ListenPort = 6881
+	clientCfg.ListenPort = cfg.ListenPort
 	clientCfg.Seed = cfg.Seed
 	clientCfg.EstablishedConnsPerTorrent = cfg.MaxConns
 
@@ -41,9 +40,7 @@ func New(cfg *config.Config) (*Engine, error) {
 	}
 
 	if cfg.EnableTrackerList {
-		tl := NewTrackerList()
-		time.Sleep(2 * time.Second)
-		eng.trackers = tl
+		eng.trackers = NewTrackerList()
 	}
 
 	return eng, nil

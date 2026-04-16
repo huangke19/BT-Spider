@@ -8,6 +8,8 @@ import (
 	"unicode/utf8"
 )
 
+const DefaultSearchTimeout = 8 * time.Second
+
 // Result 搜索结果
 type Result struct {
 	Name     string `json:"name"`
@@ -41,32 +43,64 @@ func DefaultProviders() []Provider {
 
 // Search 使用所有可用源并发搜索关键词，合并去重，按做种数排序
 func Search(keyword string, providers []Provider) ([]Result, error) {
+	return SearchWithTimeout(keyword, providers, DefaultSearchTimeout)
+}
+
+// SearchWithTimeout 使用所有可用源并发搜索关键词，并在 timeout 到期后返回已拿到的结果。
+func SearchWithTimeout(keyword string, providers []Provider, timeout time.Duration) ([]Result, error) {
+	if timeout <= 0 {
+		timeout = DefaultSearchTimeout
+	}
+
 	type providerResult struct {
+		name    string
 		results []Result
 		err     error
 	}
 	ch := make(chan providerResult, len(providers))
+	pending := make(map[string]struct{}, len(providers))
 	for _, p := range providers {
+		pending[p.Name()] = struct{}{}
 		go func(p Provider) {
 			results, err := p.Search(keyword, 0)
-			ch <- providerResult{results, err}
+			ch <- providerResult{name: p.Name(), results: results, err: err}
 		}(p)
 	}
+
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+
 	var allResults []Result
-	var lastErr error
+	var errs []string
 	for range providers {
-		pr := <-ch
-		if pr.err != nil {
-			lastErr = pr.err
-			continue
+		select {
+		case pr := <-ch:
+			delete(pending, pr.name)
+			if pr.err != nil {
+				errs = append(errs, fmt.Sprintf("%s: %v", pr.name, pr.err))
+				continue
+			}
+			allResults = append(allResults, pr.results...)
+		case <-timer.C:
+			results := finalizeResults(allResults, keyword)
+			if len(results) > 0 {
+				return results, nil
+			}
+			return nil, fmt.Errorf("搜索超时（%s），未及时返回结果；仍在等待: %s", timeout, strings.Join(sortedKeys(pending), ", "))
 		}
-		allResults = append(allResults, pr.results...)
 	}
 
-	if len(allResults) == 0 && lastErr != nil {
-		return nil, fmt.Errorf("所有搜索源失败: %w", lastErr)
+	results := finalizeResults(allResults, keyword)
+	if len(results) > 0 {
+		return results, nil
 	}
+	if len(errs) > 0 {
+		return nil, fmt.Errorf("所有搜索源失败: %s", strings.Join(errs, "; "))
+	}
+	return nil, nil
+}
 
+func finalizeResults(allResults []Result, keyword string) []Result {
 	// 关键词相关性过滤：名字必须包含至少一个关键词（过滤无关结果）
 	allResults = filterByKeyword(allResults, keyword)
 
@@ -106,7 +140,16 @@ func Search(keyword string, providers []Provider) ([]Result, error) {
 		return seeded[i].Seeders > seeded[j].Seeders
 	})
 
-	return seeded, nil
+	return seeded
+}
+
+func sortedKeys(m map[string]struct{}) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 // dedup 按 info_hash 去重，保留做种数更高的

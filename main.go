@@ -12,9 +12,10 @@ import (
 )
 
 func main() {
-	cfg, _ := config.LoadConfig("config.json")
-	if cfg == nil {
-		cfg = config.DefaultConfig()
+	cfg, err := config.LoadConfig("config.json")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "❌ 配置加载失败: %v\n", err)
+		os.Exit(1)
 	}
 
 	// 命令行参数可覆盖下载目录

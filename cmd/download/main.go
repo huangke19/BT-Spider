@@ -63,9 +63,10 @@ func main() {
 	}
 	arg := strings.Join(flag.Args(), " ")
 
-	cfg, _ := config.LoadConfig("config.json")
-	if cfg == nil {
-		cfg = config.DefaultConfig()
+	cfg, err := config.LoadConfig("config.json")
+	if err != nil {
+		emit("error", map[string]any{"msg": "配置加载失败: " + err.Error()})
+		os.Exit(1)
 	}
 	if *flagDir != "" {
 		cfg.DownloadDir = *flagDir

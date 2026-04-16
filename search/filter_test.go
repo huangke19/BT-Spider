@@ -2,8 +2,26 @@ package search
 
 import (
 	"reflect"
+	"strings"
 	"testing"
+	"time"
 )
+
+type stubProvider struct {
+	name    string
+	delay   time.Duration
+	results []Result
+	err     error
+}
+
+func (s stubProvider) Name() string { return s.name }
+
+func (s stubProvider) Search(keyword string, page int) ([]Result, error) {
+	if s.delay > 0 {
+		time.Sleep(s.delay)
+	}
+	return s.results, s.err
+}
 
 func TestTokenize(t *testing.T) {
 	cases := []struct {
@@ -101,4 +119,49 @@ func TestFilterByKeyword(t *testing.T) {
 			t.Errorf("兜底应返回 1 条，得到 %d 条", len(filtered))
 		}
 	})
+}
+
+func TestSearchWithTimeoutReturnsPartialResults(t *testing.T) {
+	providers := []Provider{
+		stubProvider{
+			name: "fast",
+			results: []Result{
+				{Name: "The Bourne Supremacy 2004", Seeders: 10, InfoHash: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"},
+			},
+		},
+		stubProvider{
+			name:  "slow",
+			delay: 200 * time.Millisecond,
+			results: []Result{
+				{Name: "Slow Result", Seeders: 20, InfoHash: "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"},
+			},
+		},
+	}
+
+	start := time.Now()
+	results, err := SearchWithTimeout("Bourne Supremacy", providers, 50*time.Millisecond)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if time.Since(start) > 150*time.Millisecond {
+		t.Fatalf("search did not return early on timeout")
+	}
+	if len(results) != 1 || results[0].Name != "The Bourne Supremacy 2004" {
+		t.Fatalf("unexpected results: %+v", results)
+	}
+}
+
+func TestSearchWithTimeoutReportsTimeoutWithoutResults(t *testing.T) {
+	providers := []Provider{
+		stubProvider{name: "slow-a", delay: 100 * time.Millisecond},
+		stubProvider{name: "slow-b", delay: 100 * time.Millisecond},
+	}
+
+	_, err := SearchWithTimeout("Bourne", providers, 20*time.Millisecond)
+	if err == nil {
+		t.Fatal("expected timeout error")
+	}
+	if got := err.Error(); !strings.Contains(got, "搜索超时") {
+		t.Fatalf("expected timeout error, got: %v", err)
+	}
 }
