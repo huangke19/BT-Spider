@@ -5,11 +5,19 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
+
+	"golang.org/x/text/unicode/norm"
 )
 
 type strictMovieQuery struct {
 	titleKey string
 	year     string
+}
+
+var strictMovieAlternateTitles = map[string][]string{
+	"leon":                 {"leon the professional"},
+	"leon the professional": {"leon"},
 }
 
 func parseStrictMovieQuery(keyword string) (strictMovieQuery, bool) {
@@ -126,7 +134,21 @@ func finalizeStrictMovieResults(allResults []Result, query strictMovieQuery) []R
 }
 
 func strictMovieMatchesTitle(name string, query strictMovieQuery) bool {
-	return strictMovieTitleKey(name, query.year) == query.titleKey
+	titleKey := strictMovieTitleKey(name, query.year)
+	if titleKey == query.titleKey {
+		return true
+	}
+	for _, alt := range strictMovieAlternateTitles[query.titleKey] {
+		if titleKey == alt {
+			return true
+		}
+	}
+	for _, alt := range strictMovieAlternateTitles[titleKey] {
+		if alt == query.titleKey {
+			return true
+		}
+	}
+	return false
 }
 
 func strictMovieTitleKey(name, year string) string {
@@ -269,19 +291,36 @@ func parseSizeToGB(size string) (float64, bool) {
 
 func splitComparableTokens(s string) []string {
 	parts := strings.FieldsFunc(s, func(r rune) bool {
-		return !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9')
+		return !(unicode.IsLetter(r) || unicode.IsDigit(r))
 	})
 	if len(parts) == 0 {
 		return nil
 	}
 	out := make([]string, 0, len(parts))
 	for _, p := range parts {
-		p = strings.ToLower(strings.TrimSpace(p))
+		p = normalizeComparableToken(p)
 		if p != "" {
 			out = append(out, p)
 		}
 	}
 	return out
+}
+
+func normalizeComparableToken(token string) string {
+	token = strings.ToLower(strings.TrimSpace(token))
+	if token == "" {
+		return ""
+	}
+
+	decomposed := norm.NFD.String(token)
+	var b strings.Builder
+	for _, r := range decomposed {
+		if unicode.Is(unicode.Mn, r) {
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
 }
 
 func trimLeadingArticle(tokens []string) []string {

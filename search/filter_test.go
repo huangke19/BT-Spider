@@ -165,3 +165,39 @@ func TestSearchWithTimeoutReportsTimeoutWithoutResults(t *testing.T) {
 		t.Fatalf("expected timeout error, got: %v", err)
 	}
 }
+
+func TestResolveMovieSearchInputUsesLeonAlias(t *testing.T) {
+	resolved, ok := ResolveMovieSearchInput("这个杀手不太冷")
+	if !ok {
+		t.Fatal("expected alias hit for 这个杀手不太冷")
+	}
+	if resolved.Query != "Léon 1994 1080P" {
+		t.Fatalf("unexpected query: %q", resolved.Query)
+	}
+}
+
+func TestFinalizeStrictMovieResultsAcceptsLeonAlternateTitles(t *testing.T) {
+	query, ok := parseStrictMovieQuery("Léon 1994 1080P")
+	if !ok {
+		t.Fatal("expected strict query parse to succeed")
+	}
+
+	results := []Result{
+		{Name: "Leon.1994.1080p.BluRay.x264", Seeders: 10, Source: "1337x", InfoHash: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"},
+		{Name: "Leon.The.Professional.1994.1080p.BluRay.x265", Seeders: 8, Source: "ThePirateBay", InfoHash: "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"},
+		{Name: "Leon.1994.720p.BluRay.x264", Seeders: 50, Source: "1337x", InfoHash: "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC"},
+	}
+
+	filtered := finalizeStrictMovieResults(results, query)
+	if len(filtered) != 2 {
+		t.Fatalf("expected 2 leon matches, got %d: %+v", len(filtered), filtered)
+	}
+
+	names := []string{filtered[0].Name, filtered[1].Name}
+	if !strings.Contains(strings.Join(names, "|"), "Leon.1994.1080p.BluRay.x264") {
+		t.Fatalf("expected direct Leon title to remain, got %+v", names)
+	}
+	if !strings.Contains(strings.Join(names, "|"), "Leon.The.Professional.1994.1080p.BluRay.x265") {
+		t.Fatalf("expected alternate Leon title to remain, got %+v", names)
+	}
+}

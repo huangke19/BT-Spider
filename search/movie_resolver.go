@@ -40,6 +40,11 @@ var movieAliases = map[string]movieMeta{
 	"复仇者联盟第二部":               {Title: "Avengers: Age of Ultron", Year: "2015"},
 	"复联2":                      {Title: "Avengers: Age of Ultron", Year: "2015"},
 	"avengersageofultron":       {Title: "Avengers: Age of Ultron", Year: "2015"},
+	"这个杀手不太冷":                 {Title: "Léon", Year: "1994"},
+	"杀手莱昂":                    {Title: "Léon", Year: "1994"},
+	"leon":                     {Title: "Léon", Year: "1994"},
+	"léon":                     {Title: "Léon", Year: "1994"},
+	"leontheprofessional":      {Title: "Léon", Year: "1994"},
 }
 
 var movieAliasKeys []string
