@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/mattn/go-runewidth"
 
 	"github.com/huangke/bt-spider/engine"
 	"github.com/huangke/bt-spider/pkg/utils"
@@ -263,11 +264,21 @@ func (m Model) View() string {
 			maxName = 30
 		}
 		for i, r := range m.results[:limit] {
-			line := fmt.Sprintf("  [%2d] %-*s  %s  S:%d L:%d %s",
+			truncated := truncate(r.Name, maxName)
+			// 按显示列宽补空格，避免 %-*s 按 rune 数补导致 CJK 行超宽
+			nameColPad := maxName - runewidth.StringWidth(truncated)
+			if nameColPad < 0 {
+				nameColPad = 0
+			}
+			seedStr := fmt.Sprintf("S:%-4d L:%-4d", r.Seeders, r.Leechers)
+			if r.Seeders < 0 {
+				seedStr = "S:—    L:—   "
+			}
+			line := fmt.Sprintf("  [%2d] %s%s  %s  %s %s",
 				i+1,
-				maxName, truncate(r.Name, maxName),
+				truncated, strings.Repeat(" ", nameColPad),
 				pad(r.Size, 10),
-				r.Seeders, r.Leechers,
+				seedStr,
 				dimStyle.Render("("+r.Source+")"),
 			)
 			b.WriteString(line)
@@ -375,15 +386,34 @@ func renderBar(percent float64, width int) string {
 		barTodo.Render(strings.Repeat("░", width-filled))
 }
 
-func truncate(s string, maxLen int) string {
-	runes := []rune(s)
-	if len(runes) <= maxLen {
+// truncate 按显示列宽截断字符串（中文等宽字符占 2 列）
+func truncate(s string, maxCols int) string {
+	if runewidth.StringWidth(s) <= maxCols {
 		return s
 	}
-	if maxLen <= 3 {
-		return string(runes[:maxLen])
+	if maxCols <= 3 {
+		w := 0
+		for i, r := range s {
+			rw := runewidth.RuneWidth(r)
+			if w+rw > maxCols {
+				return s[:i]
+			}
+			w += rw
+		}
+		return s
 	}
-	return string(runes[:maxLen-3]) + "..."
+	target := maxCols - 3
+	w := 0
+	var result []rune
+	for _, r := range s {
+		rw := runewidth.RuneWidth(r)
+		if w+rw > target {
+			break
+		}
+		result = append(result, r)
+		w += rw
+	}
+	return string(result) + "..."
 }
 
 func pad(s string, width int) string {

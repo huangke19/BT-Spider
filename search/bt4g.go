@@ -99,7 +99,7 @@ func (b *BT4G) Search(keyword string, page int) ([]Result, error) {
 		result := Result{
 			Name:     name,
 			Size:     size,
-			Seeders:  1, // RSS 不提供精确做种数，但按 seeders 排序所以存在即有
+			Seeders:  -1, // RSS 不提供精确做种数
 			Leechers: 0,
 			InfoHash: infoHash,
 			Source:   b.Name(),

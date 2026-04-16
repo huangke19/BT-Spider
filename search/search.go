@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 	"unicode/utf8"
 )
 
@@ -34,6 +35,7 @@ func DefaultProviders() []Provider {
 		NewEZTV(),
 		NewNyaa(),
 		NewLeet337x(),
+		NewTorrentKitty(),
 	}
 }
 
@@ -71,7 +73,27 @@ func Search(keyword string, providers []Provider) ([]Result, error) {
 	// 按 info_hash 去重
 	allResults = dedup(allResults)
 
-	// 过滤无做种的
+	// 对来源无做种数的结果（Seeders == -1），用 UDP tracker scrape 查询真实做种数
+	var unknownHashes []string
+	for _, r := range allResults {
+		if r.Seeders == -1 && r.InfoHash != "" {
+			unknownHashes = append(unknownHashes, r.InfoHash)
+		}
+	}
+	if len(unknownHashes) > 0 {
+		scraped := ScrapeSeeders(unknownHashes, 3*time.Second)
+		for i := range allResults {
+			if allResults[i].Seeders == -1 {
+				if c, ok := scraped[strings.ToUpper(allResults[i].InfoHash)]; ok {
+					allResults[i].Seeders = c
+				} else {
+					allResults[i].Seeders = 0 // scrape 失败视为无做种
+				}
+			}
+		}
+	}
+
+	// 只保留确认有做种的，避免下载死种
 	var seeded []Result
 	for _, r := range allResults {
 		if r.Seeders > 0 {

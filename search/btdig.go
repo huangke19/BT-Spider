@@ -114,7 +114,7 @@ func (b *BtDig) parseHTML(html string) ([]Result, error) {
 		result := Result{
 			Name:     name,
 			Size:     size,
-			Seeders:  1, // BTDigg 不提供精确做种数，存在即表示有人做种
+			Seeders:  -1, // BTDigg 不提供精确做种数
 			Leechers: 0,
 			InfoHash: infoHash,
 			Source:   b.Name(),
