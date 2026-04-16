@@ -3,11 +3,12 @@ package engine
 import (
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/huangke/bt-spider/pkg/logger"
 )
 
 const trackerListURL = "https://trackerslist.com/best.txt"
@@ -51,7 +52,7 @@ func (tl *TrackerList) run() {
 func (tl *TrackerList) refresh() {
 	trackers, err := fetchTrackers()
 	if err != nil {
-		log.Printf("⚠️  拉取 tracker 列表失败: %v，使用 fallback 列表", err)
+		logger.Warn("tracker refresh failed", "err", err)
 		tl.mu.Lock()
 		tl.trackers = fallbackTrackers
 		tl.mu.Unlock()
@@ -60,7 +61,7 @@ func (tl *TrackerList) refresh() {
 	tl.mu.Lock()
 	tl.trackers = trackers
 	tl.mu.Unlock()
-	log.Printf("✅ 已更新 tracker 列表（%d 条）", len(trackers))
+	logger.Info("tracker list updated", "count", len(trackers))
 }
 
 func (tl *TrackerList) Get() [][]string {

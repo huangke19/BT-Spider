@@ -3,12 +3,12 @@ package main
 import (
 	"flag"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 
 	"github.com/huangke/bt-spider/config"
 	"github.com/huangke/bt-spider/engine"
+	"github.com/huangke/bt-spider/pkg/logger"
 	"github.com/huangke/bt-spider/web"
 )
 
@@ -26,6 +26,11 @@ func main() {
 		cfg.DownloadDir = *dir
 	}
 
+	if err := logger.Init(cfg.LogDir, cfg.LogLevel); err != nil {
+		fmt.Fprintf(os.Stderr, "⚠️  日志系统初始化失败: %v\n", err)
+	}
+	logger.Info("bt-spider start", "mode", "web", "addr", *addr, "download_dir", cfg.DownloadDir)
+
 	eng, err := engine.New(cfg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "❌ 启动失败: %v\n", err)
@@ -38,8 +43,7 @@ func main() {
 		Handler: web.New(eng).Handler(),
 	}
 
-	log.Printf("BT-Spider Web UI running at http://%s", *addr)
-	log.Printf("Download directory: %s", cfg.DownloadDir)
+	logger.Info("web server started", "addr", *addr, "download_dir", cfg.DownloadDir)
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		fmt.Fprintf(os.Stderr, "❌ Web UI 运行出错: %v\n", err)
 		os.Exit(1)

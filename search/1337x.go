@@ -81,8 +81,9 @@ func (l *Leet337x) Search(keyword string, page int) ([]Result, error) {
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, 5) // 最多5并发
 
-	reMagnet := regexp.MustCompile(`(magnet:\?xt=urn:btih:[A-Fa-f0-9]+[^"'\s]*)`)
+	reMagnet := regexp.MustCompile(`(magnet:\?xt=urn:btih:[A-Za-z0-9]+[^"'\s]*)`)
 	reSize := regexp.MustCompile(`<strong>Total size</strong><span>([^<]+)</span>`)
+	reHash := regexp.MustCompile(`urn:btih:([A-Za-z0-9]+)`)
 
 	for i, item := range items {
 		wg.Add(1)
@@ -105,7 +106,6 @@ func (l *Leet337x) Search(keyword string, page int) ([]Result, error) {
 
 			magnet := mMagnet[1]
 			// 提取 info_hash
-			reHash := regexp.MustCompile(`urn:btih:([A-Fa-f0-9]+)`)
 			mHash := reHash.FindStringSubmatch(magnet)
 			infoHash := ""
 			if mHash != nil {

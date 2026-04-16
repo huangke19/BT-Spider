@@ -36,7 +36,6 @@ func DefaultProviders() []Provider {
 		NewBtDig(),
 		NewBT4G(),
 		NewYTS(),
-		NewEZTV(),
 		NewNyaa(),
 		NewLeet337x(),
 		NewTorrentKitty(),
