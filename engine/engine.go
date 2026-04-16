@@ -17,6 +17,8 @@ type Engine struct {
 
 	mu        sync.RWMutex
 	downloads []*Download
+
+	events chan Event
 }
 
 func New(cfg *config.Config) (*Engine, error) {
@@ -38,6 +40,7 @@ func New(cfg *config.Config) (*Engine, error) {
 	eng := &Engine{
 		client: client,
 		cfg:    cfg,
+		events: make(chan Event, 64),
 	}
 
 	if cfg.EnableTrackerList {
@@ -58,6 +61,19 @@ func New(cfg *config.Config) (*Engine, error) {
 // Config 返回 engine 配置（UI 用来显示下载目录等）
 func (e *Engine) Config() *config.Config {
 	return e.cfg
+}
+
+// Events 返回事件只读 channel，拿到后 range 读取即可。
+func (e *Engine) Events() <-chan Event {
+	return e.events
+}
+
+// emit 向事件通道写入一条事件，channel 满时丢弃（不阻塞生产者）。
+func (e *Engine) emit(ev Event) {
+	select {
+	case e.events <- ev:
+	default:
+	}
 }
 
 // registerDownload 把新任务加入注册表
@@ -119,6 +135,8 @@ func (e *Engine) Close() {
 		d.Cancel()
 	}
 	e.mu.Unlock()
+
+	close(e.events)
 
 	if e.trackers != nil {
 		e.trackers.Stop()

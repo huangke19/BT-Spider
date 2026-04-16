@@ -49,3 +49,13 @@ func statusCmd(text string, isErr bool) tea.Cmd {
 		return statusMsg{text: text, isErr: isErr}
 	}
 }
+
+func eventCmd(a *app.App) tea.Cmd {
+	return func() tea.Msg {
+		ev, ok := a.WaitEvent()
+		if !ok {
+			return nil
+		}
+		return engineEventMsg{event: ev}
+	}
+}

@@ -38,6 +38,10 @@ type statusMsg struct {
 	isErr bool
 }
 
+type engineEventMsg struct {
+	event app.EngineEvent
+}
+
 // --- 样式 ---
 
 var (
@@ -95,7 +99,7 @@ func New(a *app.App) Model {
 }
 
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(textinput.Blink, tickCmd())
+	return tea.Batch(textinput.Blink, tickCmd(), eventCmd(m.app))
 }
 
 // --- Update ---
@@ -111,6 +115,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tickMsg:
 		m.snapshots = m.app.ListDownloads()
 		return m, tickCmd()
+
+	case engineEventMsg:
+		m.snapshots = m.app.ListDownloads()
+		ev := msg.event
+		switch ev.Type {
+		case app.EventFailed:
+			m.status = ev.String()
+			m.isErr = true
+		case app.EventCanceled:
+			// 取消事件由用户触发，不覆盖已有 status
+		default:
+			m.status = ev.String()
+			m.isErr = false
+		}
+		return m, eventCmd(m.app)
 
 	case resolveDoneMsg:
 		if !msg.ok {

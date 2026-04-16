@@ -58,6 +58,8 @@ type Download struct {
 	lastTime  time.Time
 	speedEWMA float64
 
+	onEvent func(Event) // Engine 注入的事件回调
+
 	uploadedAtCompletion int64
 	uploadedTotal        int64
 	shareRatio           float64
@@ -182,6 +184,7 @@ func (d *Download) setFailed(msg string) {
 	d.errMsg = msg
 	d.mu.Unlock()
 	logger.Error("download failed", "id", d.ID, "name", d.name, "reason", msg)
+	d.emitEvent(EventFailed, msg)
 }
 
 func (d *Download) startSeeding(uploadedAtCompletion int64) {
@@ -226,6 +229,7 @@ func (d *Download) Cancel() {
 	d.state = StateCanceled
 	d.mu.Unlock()
 	logger.Info("download canceled", "id", d.ID, "name", d.name)
+	d.emitEvent(EventCanceled, "")
 	if d.Torrent != nil {
 		d.Torrent.Drop()
 	}
@@ -262,6 +266,7 @@ func (e *Engine) AddMagnetWithPolicyAsync(magnet string, policy DownloadPolicy) 
 		name:      placeholder,
 		state:     StateWaitingMeta,
 		policy:    policy,
+		onEvent:   e.emit,
 	}
 
 	e.registerDownload(dl)
@@ -282,6 +287,7 @@ func (e *Engine) AddMagnetWithPolicyAsync(magnet string, policy DownloadPolicy) 
 			dl.state = StateDownloading
 			dl.mu.Unlock()
 			logger.Info("download meta received", "id", dl.ID, "name", dl.name, "size", dl.totalSize)
+			dl.emitEvent(EventMetaReceived, dl.name)
 			t.DownloadAll()
 			go dl.watchLifecycle()
 		case <-time.After(2 * time.Minute):
@@ -322,12 +328,14 @@ func (d *Download) watchLifecycle() {
 		if !policy.Seed {
 			logger.Info("download done", "id", d.ID, "name", d.name, "size", totalSize)
 			d.markDone()
+			d.emitEvent(EventDownloadDone, "")
 			return
 		}
 
 		if state != StateSeeding {
 			logger.Info("download done, start seeding", "id", d.ID, "name", d.name, "size", totalSize)
 			d.startSeeding(uploaded)
+			d.emitEvent(EventSeedingStarted, "")
 			continue
 		}
 
@@ -342,6 +350,7 @@ func (d *Download) watchLifecycle() {
 				logger.Info("seeding done (ratio limit)", "id", d.ID, "name", d.name,
 					"ratio", ratio, "limit", policy.SeedRatioLimit)
 				d.markDone()
+				d.emitEvent(EventSeedingStopped, fmt.Sprintf("ratio %.2f", ratio))
 				t.Drop()
 				return
 			}
@@ -350,6 +359,7 @@ func (d *Download) watchLifecycle() {
 			logger.Info("seeding done (time limit)", "id", d.ID, "name", d.name,
 				"elapsed", time.Since(seedStartedAt).Round(time.Second))
 			d.markDone()
+			d.emitEvent(EventSeedingStopped, "时间限制")
 			t.Drop()
 			return
 		}
@@ -360,4 +370,15 @@ func (d *Download) uploadedAtCompletionValue() int64 {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	return d.uploadedAtCompletion
+}
+
+func (d *Download) emitEvent(typ EventType, detail string) {
+	if d.onEvent != nil {
+		d.onEvent(Event{
+			Type:       typ,
+			DownloadID: d.ID,
+			Name:       d.name,
+			Detail:     detail,
+		})
+	}
 }

@@ -27,6 +27,8 @@ type SearchResult = search.Result
 type MovieResolution = search.MovieResolution
 type DownloadSnapshot = engine.DownloadSnapshot
 type DownloadState = engine.DownloadState
+type EngineEvent = engine.Event
+type EngineEventType = engine.EventType
 
 const (
 	StateWaitingMeta = engine.StateWaitingMeta
@@ -35,6 +37,13 @@ const (
 	StateDone        = engine.StateDone
 	StateFailed      = engine.StateFailed
 	StateCanceled    = engine.StateCanceled
+
+	EventMetaReceived   = engine.EventMetaReceived
+	EventDownloadDone   = engine.EventDownloadDone
+	EventSeedingStarted = engine.EventSeedingStarted
+	EventSeedingStopped = engine.EventSeedingStopped
+	EventFailed         = engine.EventFailed
+	EventCanceled       = engine.EventCanceled
 )
 
 // App 业务编排入口。
@@ -106,4 +115,10 @@ func (a *App) ClearFinished() int {
 // DownloadDir 当前下载目录（供 UI 显示）。
 func (a *App) DownloadDir() string {
 	return a.engine.Config().DownloadDir
+}
+
+// WaitEvent 阻塞等待下一个引擎事件。channel 关闭时 ok=false。
+func (a *App) WaitEvent() (engine.Event, bool) {
+	ev, ok := <-a.engine.Events()
+	return ev, ok
 }
