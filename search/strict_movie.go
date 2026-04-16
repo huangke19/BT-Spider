@@ -322,7 +322,7 @@ func isStrict1080Token(tok string) bool {
 
 func isStrictForbiddenResolutionToken(tok string) bool {
 	switch tok {
-	case "720p", "1080i", "2160p", "4k", "480p":
+	case "720p", "1080i", "2160p", "4k", "2k", "1440p", "uhd", "480p", "360p":
 		return true
 	default:
 		return false
