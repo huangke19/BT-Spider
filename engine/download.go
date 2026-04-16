@@ -7,6 +7,7 @@ import (
 
 	"github.com/anacrolix/torrent"
 	"github.com/huangke/bt-spider/config"
+	"github.com/huangke/bt-spider/pkg/logger"
 )
 
 // DownloadState 下载任务状态
@@ -180,6 +181,7 @@ func (d *Download) setFailed(msg string) {
 	d.state = StateFailed
 	d.errMsg = msg
 	d.mu.Unlock()
+	logger.Error("download failed", "id", d.ID, "name", d.name, "reason", msg)
 }
 
 func (d *Download) startSeeding(uploadedAtCompletion int64) {
@@ -223,6 +225,7 @@ func (d *Download) Cancel() {
 	}
 	d.state = StateCanceled
 	d.mu.Unlock()
+	logger.Info("download canceled", "id", d.ID, "name", d.name)
 	if d.Torrent != nil {
 		d.Torrent.Drop()
 	}
@@ -237,6 +240,7 @@ func (e *Engine) AddMagnetAsync(magnet string) (*Download, error) {
 func (e *Engine) AddMagnetWithPolicyAsync(magnet string, policy DownloadPolicy) (*Download, error) {
 	t, err := e.client.AddMagnet(magnet)
 	if err != nil {
+		logger.Error("add magnet failed", "err", err)
 		return nil, fmt.Errorf("解析磁力链接失败: %w", err)
 	}
 
@@ -261,6 +265,7 @@ func (e *Engine) AddMagnetWithPolicyAsync(magnet string, policy DownloadPolicy) 
 	}
 
 	e.registerDownload(dl)
+	logger.Info("download queued", "id", dl.ID, "name", dl.name, "seed", policy.Seed)
 
 	go func() {
 		select {
@@ -269,16 +274,19 @@ func (e *Engine) AddMagnetWithPolicyAsync(magnet string, policy DownloadPolicy) 
 			dl.mu.Lock()
 			if dl.state == StateCanceled {
 				dl.mu.Unlock()
+				logger.Info("download canceled before meta", "id", dl.ID)
 				return
 			}
 			dl.name = info.BestName()
 			dl.totalSize = info.TotalLength()
 			dl.state = StateDownloading
 			dl.mu.Unlock()
+			logger.Info("download meta received", "id", dl.ID, "name", dl.name, "size", dl.totalSize)
 			t.DownloadAll()
 			go dl.watchLifecycle()
 		case <-time.After(2 * time.Minute):
 			dl.setFailed("获取元数据超时（2分钟）")
+			logger.Warn("download meta timeout", "id", dl.ID, "name", dl.name)
 			t.Drop()
 		}
 	}()
@@ -312,11 +320,13 @@ func (d *Download) watchLifecycle() {
 		}
 
 		if !policy.Seed {
+			logger.Info("download done", "id", d.ID, "name", d.name, "size", totalSize)
 			d.markDone()
 			return
 		}
 
 		if state != StateSeeding {
+			logger.Info("download done, start seeding", "id", d.ID, "name", d.name, "size", totalSize)
 			d.startSeeding(uploaded)
 			continue
 		}
@@ -329,12 +339,16 @@ func (d *Download) watchLifecycle() {
 		if policy.SeedRatioLimit > 0 && totalSize > 0 {
 			ratio := float64(uploadedSinceComplete) / float64(totalSize)
 			if ratio >= policy.SeedRatioLimit {
+				logger.Info("seeding done (ratio limit)", "id", d.ID, "name", d.name,
+					"ratio", ratio, "limit", policy.SeedRatioLimit)
 				d.markDone()
 				t.Drop()
 				return
 			}
 		}
 		if policy.SeedTimeLimit > 0 && !seedStartedAt.IsZero() && time.Since(seedStartedAt) >= policy.SeedTimeLimit {
+			logger.Info("seeding done (time limit)", "id", d.ID, "name", d.name,
+				"elapsed", time.Since(seedStartedAt).Round(time.Second))
 			d.markDone()
 			t.Drop()
 			return

@@ -4,6 +4,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/huangke/bt-spider/pkg/logger"
 	"github.com/huangke/bt-spider/pkg/utils"
 	"github.com/huangke/bt-spider/search"
 )
@@ -14,6 +15,19 @@ func (e *Engine) ResolveSizes(results []search.Result, timeout time.Duration) []
 	out := make([]search.Result, len(results))
 	copy(out, results)
 
+	unknown := 0
+	for _, r := range out {
+		if r.Size == "未知" && r.Magnet != "" {
+			unknown++
+		}
+	}
+	if unknown == 0 {
+		return out
+	}
+	logger.Debug("resolve sizes start", "total", len(out), "unknown", unknown, "timeout", timeout)
+
+	resolved := 0
+	var mu sync.Mutex
 	var wg sync.WaitGroup
 	for i := range out {
 		if out[i].Size != "未知" || out[i].Magnet == "" {
@@ -25,10 +39,14 @@ func (e *Engine) ResolveSizes(results []search.Result, timeout time.Duration) []
 			size := e.fetchSize(out[idx].Magnet, timeout)
 			if size != "" {
 				out[idx].Size = size
+				mu.Lock()
+				resolved++
+				mu.Unlock()
 			}
 		}(i)
 	}
 	wg.Wait()
+	logger.Debug("resolve sizes done", "resolved", resolved, "unknown_remaining", unknown-resolved)
 	return out
 }
 
@@ -36,6 +54,7 @@ func (e *Engine) ResolveSizes(results []search.Result, timeout time.Duration) []
 func (e *Engine) fetchSize(magnet string, timeout time.Duration) string {
 	t, err := e.client.AddMagnet(magnet)
 	if err != nil {
+		logger.Debug("fetchSize add magnet failed", "err", err)
 		return ""
 	}
 	defer t.Drop()
@@ -48,6 +67,7 @@ func (e *Engine) fetchSize(magnet string, timeout time.Duration) string {
 		}
 		return ""
 	case <-time.After(timeout):
+		logger.Debug("fetchSize timeout", "infohash", t.InfoHash().HexString()[:12])
 		return ""
 	}
 }

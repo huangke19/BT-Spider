@@ -7,6 +7,7 @@ import (
 
 	"github.com/anacrolix/torrent"
 	"github.com/huangke/bt-spider/config"
+	"github.com/huangke/bt-spider/pkg/logger"
 )
 
 type Engine struct {
@@ -43,6 +44,14 @@ func New(cfg *config.Config) (*Engine, error) {
 		eng.trackers = NewTrackerList()
 	}
 
+	logger.Info("engine created",
+		"download_dir", cfg.DownloadDir,
+		"listen_port", cfg.ListenPort,
+		"max_conns", cfg.MaxConns,
+		"seed", cfg.Seed,
+		"tracker_list", cfg.EnableTrackerList,
+	)
+
 	return eng, nil
 }
 
@@ -77,9 +86,11 @@ func (e *Engine) RemoveDownload(id string) bool {
 		if d.ID == id {
 			d.Cancel()
 			e.downloads = append(e.downloads[:i], e.downloads[i+1:]...)
+			logger.Info("download removed", "id", id)
 			return true
 		}
 	}
+	logger.Warn("download not found for removal", "id", id)
 	return false
 }
 
@@ -98,6 +109,7 @@ func (e *Engine) ClearFinished() int {
 		kept = append(kept, d)
 	}
 	e.downloads = kept
+	logger.Info("clear finished downloads", "removed", removed, "remaining", len(kept))
 	return removed
 }
 

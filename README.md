@@ -1,6 +1,18 @@
 # BT-Spider 🕷
 
+
 磁力搜索 + BT 下载工具。聚合多个搜索源，按做种数排序；**支持交互式 TUI** 与 **无头命令行** 两种使用方式。
+
+## 日志系统
+
+所有核心流程、错误、HTTP 请求、provider 搜索、下载状态机均有结构化日志，便于排查问题。
+
+- 日志以 JSON 格式写入 `~/Library/Logs/BT-Spider/bt-spider-YYYY-MM-DD.log`，可用 `jq`/`grep` 检索。
+- Web API 日志支持 HTTP 状态码、耗时、路径、方法，分 info/warn/error 级别。
+- 下载、搜索、DHT、provider 失败/超时等场景均有详细日志。
+- 日志目录/级别可通过 `config.json` 配置。
+
+如遇出错，**请优先查阅日志文件定位原因**。
 
 ## 功能
 

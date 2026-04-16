@@ -4,12 +4,12 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/huangke/bt-spider/engine"
+	"github.com/huangke/bt-spider/pkg/logger"
 	"github.com/huangke/bt-spider/pkg/utils"
 	"github.com/huangke/bt-spider/search"
 )
@@ -81,6 +81,7 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 
 	results, err := search.Search(req.Query, search.DefaultProviders())
 	if err != nil {
+		logger.Warn("search failed", "query", req.Query, "err", err)
 		writeError(w, http.StatusBadGateway, err.Error())
 		return
 	}
@@ -92,6 +93,7 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 
 	// 对大小仍为"未知"的结果，尝试通过 DHT 拉取元数据补充大小（最多等 8s）
 	results = s.engine.ResolveSizes(results, 8*time.Second)
+	logger.Info("search done", "query", req.Query, "count", len(results))
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"query":   req.Query,
@@ -130,6 +132,7 @@ func (s *Server) handleDownload(w http.ResponseWriter, r *http.Request) {
 
 	dl, err := s.engine.AddMagnetWithPolicyAsync(req.Magnet, policy)
 	if err != nil {
+		logger.Warn("download request failed", "magnet_prefix", req.Magnet[:min(len(req.Magnet), 60)], "err", err)
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -310,10 +313,29 @@ func methodNotAllowed(w http.ResponseWriter, allowed string) {
 	writeError(w, http.StatusMethodNotAllowed, "请求方法不支持")
 }
 
+// responseWriter wraps http.ResponseWriter to capture the status code.
+type responseWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (rw *responseWriter) WriteHeader(code int) {
+	rw.status = code
+	rw.ResponseWriter.WriteHeader(code)
+}
+
 func withLog(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
-		next.ServeHTTP(w, r)
-		log.Printf("%s %s %s", r.Method, r.URL.Path, time.Since(start).Round(time.Millisecond))
+		rw := &responseWriter{ResponseWriter: w, status: http.StatusOK}
+		next.ServeHTTP(rw, r)
+		dur := time.Since(start).Round(time.Millisecond)
+		if rw.status >= 500 {
+			logger.Error("http request", "method", r.Method, "path", r.URL.Path, "status", rw.status, "duration", dur)
+		} else if rw.status >= 400 {
+			logger.Warn("http request", "method", r.Method, "path", r.URL.Path, "status", rw.status, "duration", dur)
+		} else {
+			logger.Info("http request", "method", r.Method, "path", r.URL.Path, "status", rw.status, "duration", dur)
+		}
 	})
 }

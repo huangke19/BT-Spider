@@ -6,6 +6,8 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"github.com/huangke/bt-spider/pkg/logger"
 )
 
 const DefaultSearchTimeout = 8 * time.Second
@@ -72,6 +74,8 @@ func SearchWithTimeout(keyword string, providers []Provider, timeout time.Durati
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
 
+	logger.Debug("search start", "keyword", keyword, "providers", len(providers), "timeout", timeout)
+
 	var allResults []Result
 	var errs []string
 	for range providers {
@@ -79,13 +83,17 @@ func SearchWithTimeout(keyword string, providers []Provider, timeout time.Durati
 		case pr := <-ch:
 			delete(pending, pr.name)
 			if pr.err != nil {
+				logger.Warn("search provider error", "provider", pr.name, "keyword", keyword, "err", pr.err)
 				errs = append(errs, fmt.Sprintf("%s: %v", pr.name, pr.err))
 				continue
 			}
+			logger.Debug("search provider done", "provider", pr.name, "keyword", keyword, "count", len(pr.results))
 			allResults = append(allResults, pr.results...)
 		case <-timer.C:
+			logger.Warn("search timeout", "keyword", keyword, "pending", strings.Join(sortedKeys(pending), ", "))
 			results := finalizeResults(allResults, keyword, strictMode, strictQuery)
 			if len(results) > 0 {
+				logger.Info("search done (partial)", "keyword", keyword, "count", len(results))
 				return results, nil
 			}
 			return nil, fmt.Errorf("搜索超时（%s），未及时返回结果；仍在等待: %s", timeout, strings.Join(sortedKeys(pending), ", "))
@@ -94,11 +102,14 @@ func SearchWithTimeout(keyword string, providers []Provider, timeout time.Durati
 
 	results := finalizeResults(allResults, keyword, strictMode, strictQuery)
 	if len(results) > 0 {
+		logger.Info("search done", "keyword", keyword, "count", len(results))
 		return results, nil
 	}
 	if len(errs) > 0 {
+		logger.Warn("search all providers failed", "keyword", keyword, "errors", len(errs))
 		return nil, fmt.Errorf("所有搜索源失败: %s", strings.Join(errs, "; "))
 	}
+	logger.Info("search done (no results)", "keyword", keyword)
 	return nil, nil
 }
 

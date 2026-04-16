@@ -5,6 +5,7 @@ import (
 	"unicode"
 
 	"github.com/huangke/bt-spider/config"
+	"github.com/huangke/bt-spider/pkg/logger"
 )
 
 // NLPResolve 自然语言电影搜索 pipeline：
@@ -19,16 +20,21 @@ func NLPResolve(raw string, cfg *config.Config) (MovieResolution, bool) {
 		return MovieResolution{}, false
 	}
 
+	logger.Info("nlp resolve start", "input", raw)
+
 	// L1: 剥离意图词 + 中文序号规范化
 	cleaned := stripMovieIntent(raw)
 	cleaned = normalizeChineseNumbers(cleaned)
+	logger.Debug("nlp L1 clean", "input", raw, "cleaned", cleaned)
 
 	// L2: 本地别名（含严格格式识别），先试 cleaned，再试原始输入
 	if r, ok := ResolveMovieSearchInput(cleaned); ok {
+		logger.Info("nlp L2 hit (alias, cleaned)", "input", cleaned, "query", r.Query)
 		return r, true
 	}
 	if cleaned != raw {
 		if r, ok := ResolveMovieSearchInput(raw); ok {
+			logger.Info("nlp L2 hit (alias, raw)", "input", raw, "query", r.Query)
 			return r, true
 		}
 	}
@@ -37,24 +43,33 @@ func NLPResolve(raw string, cfg *config.Config) (MovieResolution, bool) {
 	if cfg.TMDBApiKey != "" {
 		if meta, ok := SearchTMDB(cleaned, cfg.TMDBApiKey); ok {
 			query := formatMovieQuery(meta.Title, meta.Year) + " 1080P"
+			logger.Info("nlp L3 hit (tmdb)", "input", cleaned, "query", query, "year", meta.Year)
 			return MovieResolution{
 				Query:   query,
 				Display: "TMDB 解析: " + query,
 			}, true
 		}
+		logger.Warn("nlp L3 miss (tmdb)", "input", cleaned)
+	} else {
+		logger.Debug("nlp L3 skipped (no tmdb key)")
 	}
 
 	// L4: Groq
 	if cfg.GroqApiKey != "" {
 		if meta, ok := ResolveWithGroq(cleaned, cfg.GroqApiKey); ok {
 			query := formatMovieQuery(meta.Title, meta.Year) + " 1080P"
+			logger.Info("nlp L4 hit (groq)", "input", cleaned, "query", query, "year", meta.Year)
 			return MovieResolution{
 				Query:   query,
 				Display: "AI 解析: " + query,
 			}, true
 		}
+		logger.Warn("nlp L4 miss (groq)", "input", cleaned)
+	} else {
+		logger.Debug("nlp L4 skipped (no groq key)")
 	}
 
+	logger.Error("nlp resolve failed", "input", raw, "cleaned", cleaned)
 	return MovieResolution{}, false
 }
 
