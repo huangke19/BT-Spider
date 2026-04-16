@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"time"
 
 	"github.com/huangke/bt-spider/pkg/httputil"
 	"github.com/huangke/bt-spider/search"
@@ -18,7 +19,7 @@ type YTS struct {
 func NewYTS() *YTS {
 	return &YTS{
 		baseURL: "https://yts.mx/api/v2",
-		client:  httputil.NewResilientClient(),
+		client:  httputil.NewResilientClient(httputil.WithTimeout(3 * time.Second)),
 	}
 }
 

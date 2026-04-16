@@ -5,6 +5,7 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/huangke/bt-spider/pkg/httputil"
 	"github.com/huangke/bt-spider/search"
@@ -19,7 +20,7 @@ type BtDig struct {
 func NewBtDig() *BtDig {
 	return &BtDig{
 		baseURL: "https://btdig.com",
-		client:  httputil.NewResilientClient(),
+		client:  httputil.NewResilientClient(httputil.WithTimeout(3 * time.Second)),
 	}
 }
 

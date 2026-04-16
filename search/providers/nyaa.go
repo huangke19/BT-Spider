@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/huangke/bt-spider/pkg/httputil"
 	"github.com/huangke/bt-spider/search"
@@ -21,7 +22,7 @@ type Nyaa struct {
 func NewNyaa() *Nyaa {
 	return &Nyaa{
 		baseURL: "https://nyaa.si",
-		client:  httputil.NewResilientClient(),
+		client:  httputil.NewResilientClient(httputil.WithTimeout(3 * time.Second)),
 	}
 }
 

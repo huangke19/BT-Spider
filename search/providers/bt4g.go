@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/huangke/bt-spider/pkg/httputil"
 	"github.com/huangke/bt-spider/search"
@@ -20,7 +21,7 @@ type BT4G struct {
 func NewBT4G() *BT4G {
 	return &BT4G{
 		baseURL: "https://bt4gprx.com",
-		client:  httputil.NewResilientClient(),
+		client:  httputil.NewResilientClient(httputil.WithTimeout(3 * time.Second)),
 	}
 }
 

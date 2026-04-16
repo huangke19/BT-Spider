@@ -13,12 +13,19 @@ import (
 
 const DefaultSearchTimeout = 8 * time.Second
 
+// earlyReturnMinProviders 提前返回所需的最少成功 provider 数。
+const earlyReturnMinProviders = 2
+
+// earlyReturnMinResults 提前返回所需的最少结果数。
+const earlyReturnMinResults = 3
+
 // Search 使用所有可用源并发搜索关键词，合并去重，按做种数排序
 func Search(keyword string, providers []search.Provider) ([]search.Result, error) {
 	return SearchWithTimeout(keyword, providers, DefaultSearchTimeout)
 }
 
 // SearchWithTimeout 使用所有可用源并发搜索关键词，并在 timeout 到期后返回已拿到的结果。
+// 当已有足够多 provider 返回且结果数达标时，提前结束等待（不再等慢源）。
 func SearchWithTimeout(keyword string, providers []search.Provider, timeout time.Duration) ([]search.Result, error) {
 	if timeout <= 0 {
 		timeout = DefaultSearchTimeout
@@ -51,7 +58,10 @@ func SearchWithTimeout(keyword string, providers []search.Provider, timeout time
 
 	var allResults []search.Result
 	var errs []string
-	for range providers {
+	var successCount int
+	var totalResultCount int
+
+	for len(pending) > 0 {
 		select {
 		case pr := <-ch:
 			delete(pending, pr.name)
@@ -59,10 +69,23 @@ func SearchWithTimeout(keyword string, providers []search.Provider, timeout time
 			if pr.err != nil {
 				logger.Warn("search provider error", "provider", pr.name, "keyword", keyword, "err", pr.err)
 				errs = append(errs, fmt.Sprintf("%s: %v", pr.name, pr.err))
-				continue
+			} else {
+				logger.Debug("search provider done", "provider", pr.name, "keyword", keyword, "count", len(pr.results))
+				successCount++
+				totalResultCount += len(pr.results)
+				allResults = append(allResults, pr.results...)
 			}
-			logger.Debug("search provider done", "provider", pr.name, "keyword", keyword, "count", len(pr.results))
-			allResults = append(allResults, pr.results...)
+
+			// Early return: 有足够 provider 返回且结果数达标，不再等慢源
+			if successCount >= earlyReturnMinProviders && totalResultCount >= earlyReturnMinResults {
+				logger.Debug("search early return", "providers_ok", successCount, "results", totalResultCount, "remaining", len(pending))
+				results := finalizeResults(allResults, keyword, strictMode, strictQuery)
+				if len(results) > 0 {
+					logger.Info("search done (early)", "keyword", keyword, "count", len(results))
+					auditFinishRun(runID, "success_early", len(results), "")
+					return results, nil
+				}
+			}
 		case <-timer.C:
 			logger.Warn("search timeout", "keyword", keyword, "pending", strings.Join(sortedKeys(pending), ", "))
 			for provider := range pending {
