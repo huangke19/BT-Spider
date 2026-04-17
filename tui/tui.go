@@ -105,10 +105,10 @@ type Model struct {
 	snapshots []app.DownloadSnapshot
 
 	// 流式搜索
-	searchCancel     context.CancelFunc           // 当前搜索的 cancel
-	searchGeneration int                          // 每次新搜索 +1，防止旧 update 污染
-	currentSearchCh  <-chan app.SearchUpdate      // 当前搜索的 channel
-	resolvingSize    map[int]bool                 // 正在 resolving 的结果索引
+	searchCancel     context.CancelFunc      // 当前搜索的 cancel
+	searchGeneration int                     // 每次新搜索 +1，防止旧 update 污染
+	currentSearchCh  <-chan app.SearchUpdate // 当前搜索的 channel
+	resolvingSize    map[int]bool            // 正在 resolving 的结果索引
 }
 
 // New 创建一个初始化好的 Model
@@ -120,9 +120,9 @@ func New(a *app.App) Model {
 	ti.Focus()
 
 	return Model{
-		app:          a,
-		input:        ti,
-		status:       fmt.Sprintf("下载目录: %s", a.DownloadDir()),
+		app:           a,
+		input:         ti,
+		status:        fmt.Sprintf("下载目录: %s", a.DownloadDir()),
 		resolvingSize: map[int]bool{},
 	}
 }
