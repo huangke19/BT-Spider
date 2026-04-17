@@ -31,6 +31,12 @@ func SearchWithTimeout(keyword string, providers []search.Provider, timeout time
 		timeout = DefaultSearchTimeout
 	}
 
+	// 缓存优先（决策 D3：24h TTL）
+	if cached, ok := CacheGet(keyword); ok {
+		logger.Info("search cache hit", "keyword", keyword, "count", len(cached))
+		return cached, nil
+	}
+
 	strictQuery, strictMode := parseStrictMovieQuery(keyword)
 	runID := auditStartRun(keyword, timeout, strictMode, len(providers))
 
@@ -83,6 +89,7 @@ func SearchWithTimeout(keyword string, providers []search.Provider, timeout time
 				if len(results) > 0 {
 					logger.Info("search done (early)", "keyword", keyword, "count", len(results))
 					auditFinishRun(runID, "success_early", len(results), "")
+					CachePut(keyword, results)
 					return results, nil
 				}
 			}
@@ -95,6 +102,7 @@ func SearchWithTimeout(keyword string, providers []search.Provider, timeout time
 			if len(results) > 0 {
 				logger.Info("search done (partial)", "keyword", keyword, "count", len(results))
 				auditFinishRun(runID, "partial_timeout", len(results), "")
+				CachePut(keyword, results)
 				return results, nil
 			}
 			err := fmt.Errorf("搜索超时（%s），未及时返回结果；仍在等待: %s", timeout, strings.Join(sortedKeys(pending), ", "))
@@ -107,6 +115,7 @@ func SearchWithTimeout(keyword string, providers []search.Provider, timeout time
 	if len(results) > 0 {
 		logger.Info("search done", "keyword", keyword, "count", len(results))
 		auditFinishRun(runID, "success", len(results), "")
+		CachePut(keyword, results)
 		return results, nil
 	}
 	if len(errs) > 0 {
