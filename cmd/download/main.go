@@ -18,6 +18,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -29,6 +30,7 @@ import (
 
 	"github.com/huangke/bt-spider/config"
 	"github.com/huangke/bt-spider/engine"
+	"github.com/huangke/bt-spider/pkg/httputil"
 	"github.com/huangke/bt-spider/pkg/logger"
 	"github.com/huangke/bt-spider/pkg/utils"
 	"github.com/huangke/bt-spider/search/pipeline"
@@ -81,6 +83,13 @@ func main() {
 		emit("warn", map[string]any{"msg": "搜索审计数据库初始化失败: " + err.Error()})
 	}
 	logger.Info("bt-download start", "mode", "headless", "arg", arg, "download_dir", cfg.DownloadDir)
+
+	// 启动时异步预热常用 provider 的 TLS/DNS 连接（决策 D5）
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		httputil.Preheat(ctx, httputil.DefaultPreheatHosts())
+	}()
 
 	eng, err := engine.New(cfg)
 	if err != nil {

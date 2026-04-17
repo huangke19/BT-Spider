@@ -134,7 +134,7 @@ func NewResilientClient(opts ...Option) *ResilientClient {
 	c := &ResilientClient{
 		client: &http.Client{
 			Timeout:   DefaultTimeout,
-			Transport: &http.Transport{Proxy: http.ProxyFromEnvironment},
+			Transport: SharedTransport(),
 		},
 		ua:           DefaultUA,
 		maxBody:      2 << 20, // 2 MB

@@ -11,12 +11,10 @@ const DefaultUA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/5
 // DefaultTimeout is the default HTTP client timeout.
 const DefaultTimeout = 15 * time.Second
 
-// NewClient creates an *http.Client with proxy support and the given timeout.
+// NewClient 返回一个使用共享 Transport 的 *http.Client。
 func NewClient(timeout time.Duration) *http.Client {
 	return &http.Client{
-		Timeout: timeout,
-		Transport: &http.Transport{
-			Proxy: http.ProxyFromEnvironment,
-		},
+		Timeout:   timeout,
+		Transport: SharedTransport(),
 	}
 }

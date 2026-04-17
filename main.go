@@ -1,14 +1,17 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/huangke/bt-spider/app"
 	"github.com/huangke/bt-spider/config"
 	"github.com/huangke/bt-spider/engine"
+	"github.com/huangke/bt-spider/pkg/httputil"
 	"github.com/huangke/bt-spider/pkg/logger"
 	"github.com/huangke/bt-spider/search/pipeline"
 	"github.com/huangke/bt-spider/tui"
@@ -34,6 +37,13 @@ func main() {
 		fmt.Fprintf(os.Stderr, "⚠️  搜索审计数据库初始化失败（将继续运行但不记录搜索明细）: %v\n", err)
 	}
 	logger.Info("bt-spider start", "mode", "tui", "download_dir", cfg.DownloadDir)
+
+	// 启动时异步预热常用 provider 的 TLS/DNS 连接（决策 D5）
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		httputil.Preheat(ctx, httputil.DefaultPreheatHosts())
+	}()
 
 	eng, err := engine.New(cfg)
 	if err != nil {
