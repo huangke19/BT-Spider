@@ -8,6 +8,5 @@ func DefaultProviders() []search.Provider {
 		NewApiBay(),
 		NewBT4G(),
 		NewTorrentKitty(),
-		NewYTS(),
 	}
 }

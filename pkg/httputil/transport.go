@@ -69,7 +69,6 @@ func DefaultPreheatHosts() []string {
 	return []string{
 		"https://apibay.org",
 		"https://bt4gprx.com",
-		"https://yts.mx",
 		"https://www.torrentkitty.tv",
 	}
 }

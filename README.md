@@ -4,7 +4,7 @@
 
 ## 功能
 
-- 聚合 4 个搜索源：ApiBay（ThePirateBay）、BT4G、TorrentKitty、YTS，并发请求
+- 聚合 3 个搜索源：ApiBay（ThePirateBay）、BT4G、TorrentKitty，并发请求
 - **流式搜索**：每个 provider 返回即刷新 TUI，不等待最慢的源
 - **24h 内存搜索缓存**（LRU，最多 256 条）：同一关键词重复搜索瞬时返回
 - **NLP 电影识别**：中英文别名 → 严格格式解析 → TMDB API（含 7 天响应缓存）→ Groq LLM 兜底
@@ -133,7 +133,6 @@ bt> c 1
 | ApiBay（ThePirateBay） | 综合 | JSON API | ✅ |
 | BT4G | 综合 | RSS | ✅ |
 | TorrentKitty | 综合 | HTML 解析 | ✅ |
-| YTS | 电影 | JSON API | ✅ |
 | 1337x | 综合 | HTML 解析 | ❌ 已禁用（详情页延迟高） |
 | EZTV | 美剧 | JSON API | ❌ 未启用 |
 
@@ -252,11 +251,10 @@ sqlite3 ~/Library/Application\ Support/BT-Spider/search_history.db \
 │   ├── types.go                     # 公共类型：Result、Provider 接口、MovieResolution、BuildMagnet
 │   ├── parse.go                     # 工具函数：IsCJK、ParseMovieTitleYear 等
 │   ├── providers/
-│   │   ├── registry.go              # DefaultProviders()（返回 4 个启用的源）
+│   │   ├── registry.go              # DefaultProviders()（返回 3 个启用的源）
 │   │   ├── apibay.go                # ApiBay（ThePirateBay）JSON API
 │   │   ├── bt4g.go                  # BT4G RSS
 │   │   ├── torrentkitty.go          # TorrentKitty HTML 解析
-│   │   ├── yts.go                   # YTS JSON API
 │   │   ├── leet337x.go              # 1337x（已禁用）
 │   │   └── eztv.go                  # EZTV（未启用）
 │   ├── query/
