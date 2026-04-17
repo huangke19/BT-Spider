@@ -37,6 +37,18 @@ func BuildMagnet(infoHash, name string) string {
 		"udp://tracker.torrent.eu.org:451/announce",
 		"udp://tracker.bittor.pw:1337/announce",
 		"udp://tracker.openbittorrent.com:6969/announce",
+		"udp://exodus.desync.com:6969/announce",
+		"udp://tracker.moeking.me:6969/announce",
+		"udp://tracker.dler.org:6969/announce",
+		"udp://p4p.arenabg.com:1337/announce",
+		"udp://movies.zsw.ca:6969/announce",
+		"udp://opentracker.i2p.rocks:6969/announce",
+		"udp://explodie.org:6969/announce",
+		"udp://tracker1.bt.moack.co.kr:80/announce",
+		"udp://tracker.tiny-vps.com:6969/announce",
+		"udp://retracker.lanta-net.ru:2710/announce",
+		"http://tracker.opentrackr.org:1337/announce",
+		"http://tracker.openbittorrent.com:80/announce",
 	}
 	for _, tr := range trackers {
 		magnet += "&tr=" + tr
