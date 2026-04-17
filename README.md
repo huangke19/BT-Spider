@@ -1,6 +1,6 @@
 # bt-spider
 
-磁力搜索 + BT 下载工具。聚合 4 个搜索源，结果流式推送、按做种数排序；支持**交互式 TUI** 与**无头命令行**两种使用方式。
+磁力搜索 + BT 下载工具。聚合 3 个搜索源，结果流式推送、按做种数排序；支持**交互式 TUI** 与**无头命令行**两种使用方式。
 
 ## 功能
 
@@ -59,20 +59,104 @@ flowchart TD
 ### 编译
 
 ```bash
-# TUI 主程序
-go build -o bt-spider .
+# 推荐：一次性校验并编译两个可执行文件
+./build.sh
 
-# 无头下载器（脚本 / AI 调用）
+# 如需自定义输出路径
+MAIN_BIN=/tmp/bt-spider HEADLESS_BIN=/tmp/bt-download ./build.sh
+```
+
+脚本行为：
+
+- 自动切到项目根目录执行，可从任意位置调用
+- 先执行 `go build ./...` 做完整校验
+- 再分别生成 `bt-spider` 和 `bt-download`
+
+如果你更喜欢手动编译，也可以直接执行：
+
+```bash
+go build -o bt-spider .
 go build -o bt-download ./cmd/download
+```
+
+### 开发期自动重启
+
+如果你的痛点是“每次改代码都要手动重新编译、再手动重启”，这个项目更适合用 **开发期热启动**：
+
+- 保存 Go 文件后自动重新编译
+- 编译成功后自动重启进程
+- 适合 TUI 和 `bt-download` 两种模式
+
+先安装 `air`：
+
+```bash
+go install github.com/air-verse/air@latest
+```
+
+然后使用仓库内置脚本：
+
+```bash
+# 监听主程序（TUI）
+./dev.sh
+
+# 等价于
+./dev.sh tui
+
+# 监听无头下载器
+./dev.sh download --json "Ubuntu 24.04"
+```
+
+说明：
+
+- `dev.sh` 会监听 `.go` 和 `config.json` 变更
+- 检测到改动后自动重新编译并重启
+- 这是“热启动 / 自动重启”，不是保留内存状态的前端式 HMR
+- TUI 重启后界面状态会重新初始化，这是终端程序的正常行为
+
+如果只想临时跑某个入口，也可以直接用 `air`：
+
+```bash
+# TUI
+air --build.cmd "go build -o ./tmp/bt-spider-dev ." --build.entrypoint "./tmp/bt-spider-dev"
+
+# bt-download
+air --build.cmd "go build -o ./tmp/bt-download-dev ./cmd/download" --build.entrypoint "./tmp/bt-download-dev" -- --json "Ubuntu 24.04"
 ```
 
 ### TUI 模式
 
 ```bash
+# 默认模式就是 TUI；若二进制不存在会先自动编译
+./run.sh
+
+# 透传下载目录给 TUI 主程序
+./run.sh tui /Volumes/External/Downloads
+
+# 也可以直接运行二进制
 HTTPS_PROXY=http://127.0.0.1:7890 ./bt-spider
 ```
 
-启动后进入全屏界面，上半部分显示搜索结果，下半部分显示下载任务进度条，每 500ms 自动刷新。
+启动后进入全屏界面，顶部显示运行概览，中间为搜索结果与详情面板，底部为下载任务区，每 500ms 自动刷新。
+
+当前 TUI 布局重点：
+
+- 左侧结果区采用更紧凑的表格式布局，列出 `标题 / 大小 / 热度 / 来源`
+- 热度列使用 `↑做种 ↓下载` 的紧凑表达，便于快速扫候选质量
+- 右侧详情区保留完整字段说明，避免把信息全部挤进单行
+- 未知大小、空大小、无法解析大小的结果会直接过滤，不再进入候选列表
+
+`run.sh` 还支持：
+
+```bash
+# 显式启动 TUI
+./run.sh tui
+
+# 启动无头下载器
+./run.sh download --pick 2 "Ubuntu 24.04"
+
+# 仅执行编译
+./run.sh build
+```
 
 #### TUI 命令
 
@@ -85,8 +169,12 @@ HTTPS_PROXY=http://127.0.0.1:7890 ./bt-spider
 | `magnet:?xt=...` | 直接添加磁力链接到下载队列 |
 | `c <序号>` | 取消指定下载任务并从列表移除 |
 | `clear` | 移除所有已完成 / 失败 / 取消的任务 |
+| `doctor` | 打开环境自检详情面板 |
+| `doctor hide` | 隐藏环境自检详情面板 |
 | `q` / `quit` / `exit` | 退出 |
 | Ctrl+C | 退出 |
+| `↑/↓/PgUp/PgDn/Home/End` | 在搜索结果里移动当前选中项 |
+| 空输入后按 Enter | 直接下载当前选中项 |
 
 **示例：**
 
@@ -115,6 +203,9 @@ bt> c 1
 适合脚本、CI 或 AI 助手通过子进程调用，进度以每行一条流式输出，支持 JSON 模式。
 
 ```bash
+# 通过启动脚本调用
+./run.sh download "The Bourne Supremacy 2004"
+
 # 关键词搜索，自动选做种数最高的第 1 条
 ./bt-download "The Bourne Supremacy 2004"
 
@@ -168,8 +259,6 @@ bt> c 1
 | ApiBay（ThePirateBay） | 综合 | JSON API | ✅ |
 | BT4G | 综合 | RSS | ✅ |
 | TorrentKitty | 综合 | HTML 解析 | ✅ |
-| 1337x | 综合 | HTML 解析 | ❌ 已禁用（详情页延迟高） |
-| EZTV | 美剧 | JSON API | ❌ 未启用 |
 
 ## 配置
 
@@ -212,6 +301,8 @@ bt> c 1
 TUI 启动时可以用命令行参数覆盖下载目录：
 
 ```bash
+./run.sh tui /Volumes/External/Downloads
+# 或
 ./bt-spider /Volumes/External/Downloads
 ```
 
@@ -230,9 +321,9 @@ TUI 启动时可以用命令行参数覆盖下载目录：
 
 ```bash
 export HTTPS_PROXY=http://127.0.0.1:7890
-./bt-spider
+./run.sh
 # 或
-./bt-download "关键词"
+./run.sh download "关键词"
 ```
 
 ## 日志
@@ -290,8 +381,6 @@ sqlite3 ~/Library/Application\ Support/BT-Spider/search_history.db \
 │   │   ├── apibay.go                # ApiBay（ThePirateBay）JSON API
 │   │   ├── bt4g.go                  # BT4G RSS
 │   │   ├── torrentkitty.go          # TorrentKitty HTML 解析
-│   │   ├── leet337x.go              # 1337x（已禁用）
-│   │   └── eztv.go                  # EZTV（未启用）
 │   ├── query/
 │   │   ├── resolver.go              # Resolver 接口与链式组合
 │   │   ├── nlp_resolver.go          # NLP 预处理（中文数字、意图词清洗）

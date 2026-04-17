@@ -24,8 +24,8 @@ func (f *fakeProvider) Search(keyword string, page int) ([]search.Result, error)
 func TestSearchStreamOrdering(t *testing.T) {
 	CacheInvalidate("kw")
 	providers := []search.Provider{
-		&fakeProvider{name: "fast", delay: 50 * time.Millisecond, results: []search.Result{{Name: "A", Seeders: 10, InfoHash: "h1"}}},
-		&fakeProvider{name: "slow", delay: 300 * time.Millisecond, results: []search.Result{{Name: "B", Seeders: 20, InfoHash: "h2"}}},
+		&fakeProvider{name: "fast", delay: 50 * time.Millisecond, results: []search.Result{{Name: "A", Size: "1.0 GB", Seeders: 10, InfoHash: "h1"}}},
+		&fakeProvider{name: "slow", delay: 300 * time.Millisecond, results: []search.Result{{Name: "B", Size: "1.2 GB", Seeders: 20, InfoHash: "h2"}}},
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
@@ -37,6 +37,12 @@ func TestSearchStreamOrdering(t *testing.T) {
 	}
 	if len(updates) < 2 {
 		t.Fatalf("expected >=2 updates, got %d", len(updates))
+	}
+	if len(updates[0].Results) != 1 || updates[0].Results[0].Name != "A" {
+		t.Fatalf("expected first streamed result to be A, got %+v", updates[0].Results)
+	}
+	if len(updates[len(updates)-2].Results) != 2 || updates[len(updates)-2].Results[0].Name != "B" {
+		t.Fatalf("expected later higher-seeder result to move to front, got %+v", updates[len(updates)-2].Results)
 	}
 	if !updates[len(updates)-1].Done {
 		t.Fatal("last update should be Done")

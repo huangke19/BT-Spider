@@ -122,14 +122,14 @@ func TestSearchWithTimeoutReturnsPartialResults(t *testing.T) {
 		stubProvider{
 			name: "fast",
 			results: []search.Result{
-				{Name: "The Bourne Supremacy 2004", Seeders: 10, InfoHash: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"},
+				{Name: "The Bourne Supremacy 2004", Size: "1.4 GB", Seeders: 10, InfoHash: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"},
 			},
 		},
 		stubProvider{
 			name:  "slow",
 			delay: 200 * time.Millisecond,
 			results: []search.Result{
-				{Name: "Slow Result", Seeders: 20, InfoHash: "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"},
+				{Name: "Slow Result", Size: "1.8 GB", Seeders: 20, InfoHash: "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"},
 			},
 		},
 	}
@@ -169,9 +169,9 @@ func TestFinalizeStrictMovieResultsAcceptsLeonAlternateTitles(t *testing.T) {
 	}
 
 	results := []search.Result{
-		{Name: "Leon.1994.1080p.BluRay.x264", Seeders: 10, Source: "1337x", InfoHash: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"},
-		{Name: "Leon.The.Professional.1994.1080p.BluRay.x265", Seeders: 8, Source: "ThePirateBay", InfoHash: "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"},
-		{Name: "Leon.1994.720p.BluRay.x264", Seeders: 50, Source: "1337x", InfoHash: "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC"},
+		{Name: "Leon.1994.1080p.BluRay.x264", Size: "4.2 GB", Seeders: 10, Source: "TorrentKitty", InfoHash: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"},
+		{Name: "Leon.The.Professional.1994.1080p.BluRay.x265", Size: "3.6 GB", Seeders: 8, Source: "ThePirateBay", InfoHash: "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"},
+		{Name: "Leon.1994.720p.BluRay.x264", Size: "2.4 GB", Seeders: 50, Source: "TorrentKitty", InfoHash: "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC"},
 	}
 
 	filtered := finalizeStrictMovieResults(results, query)
@@ -185,5 +185,42 @@ func TestFinalizeStrictMovieResultsAcceptsLeonAlternateTitles(t *testing.T) {
 	}
 	if !strings.Contains(strings.Join(names, "|"), "Leon.The.Professional.1994.1080p.BluRay.x265") {
 		t.Fatalf("expected alternate Leon title to remain, got %+v", names)
+	}
+}
+
+func TestFinalizeResultsFiltersOversizedAndSortsBySeeders(t *testing.T) {
+	results := []search.Result{
+		{Name: "Movie Slow", Size: "1.2 GB", Seeders: 20, InfoHash: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"},
+		{Name: "Movie Too Big", Size: "6.3 GB", Seeders: 999, InfoHash: "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"},
+		{Name: "Movie Fast", Size: "4.9 GB", Seeders: 80, InfoHash: "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC"},
+		{Name: "Movie Unknown Size", Size: "未知", Seeders: 50, InfoHash: "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD"},
+	}
+
+	filtered := finalizeResults(results, "Movie", false, strictMovieQuery{})
+	if len(filtered) != 2 {
+		t.Fatalf("expected 2 remaining results, got %d: %+v", len(filtered), filtered)
+	}
+	if filtered[0].Name != "Movie Fast" || filtered[1].Name != "Movie Slow" {
+		t.Fatalf("expected seeder-desc order after filtering, got %+v", filtered)
+	}
+}
+
+func TestFinalizeStrictMovieResultsFiltersOversized(t *testing.T) {
+	query, ok := parseStrictMovieQuery("Leon 1994 1080P")
+	if !ok {
+		t.Fatal("expected strict query parse to succeed")
+	}
+
+	results := []search.Result{
+		{Name: "Leon.1994.1080p.BluRay.x264", Size: "4.8 GB", Seeders: 30, InfoHash: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"},
+		{Name: "Leon.1994.1080p.REMUX", Size: "8.1 GB", Seeders: 300, InfoHash: "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"},
+	}
+
+	filtered := finalizeStrictMovieResults(results, query)
+	if len(filtered) != 1 {
+		t.Fatalf("expected 1 strict result after size filter, got %d: %+v", len(filtered), filtered)
+	}
+	if filtered[0].Name != "Leon.1994.1080p.BluRay.x264" {
+		t.Fatalf("unexpected strict result ordering/filtering: %+v", filtered)
 	}
 }

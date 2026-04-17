@@ -13,6 +13,8 @@ import (
 
 const DefaultSearchTimeout = 8 * time.Second
 
+const maxSearchResultSizeGB = 5.0
+
 // earlyReturnMinProviders 提前返回所需的最少成功 provider 数。
 const earlyReturnMinProviders = 2
 
@@ -136,6 +138,7 @@ func finalizeResults(allResults []search.Result, keyword string, strictMode bool
 
 	allResults = filterByKeyword(allResults, keyword)
 	allResults = dedup(allResults)
+	allResults = filterOversizedResults(allResults)
 
 	// 决策 D4：移除同步 ScrapeSeeders，未知 seeders 置 0。
 	for i := range allResults {
@@ -151,11 +154,29 @@ func finalizeResults(allResults []search.Result, keyword string, strictMode bool
 		}
 	}
 
-	sort.Slice(seeded, func(i, j int) bool {
-		return seeded[i].Seeders > seeded[j].Seeders
+	sort.SliceStable(seeded, func(i, j int) bool {
+		if seeded[i].Seeders != seeded[j].Seeders {
+			return seeded[i].Seeders > seeded[j].Seeders
+		}
+		return strings.ToLower(seeded[i].Name) < strings.ToLower(seeded[j].Name)
 	})
 
 	return seeded
+}
+
+func filterOversizedResults(results []search.Result) []search.Result {
+	out := make([]search.Result, 0, len(results))
+	for _, r := range results {
+		gb, ok := parseSizeToGB(r.Size)
+		if !ok {
+			continue
+		}
+		if gb > maxSearchResultSizeGB {
+			continue
+		}
+		out = append(out, r)
+	}
+	return out
 }
 
 func sortedKeys(m map[string]struct{}) []string {
