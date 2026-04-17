@@ -1,5 +1,8 @@
 package providers
 
+// Deprecated: 本 provider 因需要抓取 N 个详情页（5-15s 延迟），已从 DefaultProviders 移除。
+// 如需重新启用，请在 registry.go 中恢复。参见 CHANGELOG v0.x.x。
+
 import (
 	"fmt"
 	"net/url"

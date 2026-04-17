@@ -16,7 +16,7 @@
 
 ## 功能
 
-- 聚合 5 个搜索源：ApiBay、BT4G、YTS、1337x、TorrentKitty（BTDigg/Nyaa/EZTV 已移除）
+- 聚合 4 个搜索源：ApiBay、BT4G、YTS、TorrentKitty（1337x/BTDigg/Nyaa/EZTV 已移除）
 - 并发搜索、自动去重、按做种数降序排列
 - 搜索带总超时保护，慢源不会一直拖住整体结果
 - 本地搜索审计数据库：记录每次搜索会话、每个搜索源的成功/失败，以及返回的全部条目（用于后续统计分析）
@@ -158,7 +158,7 @@ bt> Interstellar 2014 1080P
 | YTS | 电影 | JSON API |
 | EZTV | 剧集 | JSON API |
 | Nyaa | 动漫 | RSS |
-| 1337x | 综合 | HTML 爬取 |
+| ~~1337x~~ | ~~综合~~ | ~~HTML 爬取~~ |
 | TorrentKitty | 综合 | HTML 爬取 |
 
 ## 下载
