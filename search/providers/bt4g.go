@@ -21,7 +21,7 @@ type BT4G struct {
 func NewBT4G() *BT4G {
 	return &BT4G{
 		baseURL: "https://bt4gprx.com",
-		client:  httputil.NewResilientClient(httputil.WithTimeout(3 * time.Second)),
+		client:  httputil.NewSearchClient(httputil.WithTimeout(3 * time.Second)),
 	}
 }
 

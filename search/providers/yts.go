@@ -18,7 +18,7 @@ type YTS struct {
 func NewYTS() *YTS {
 	return &YTS{
 		baseURL: "https://yts.mx/api/v2",
-		client:  httputil.NewResilientClient(httputil.WithTimeout(3 * time.Second)),
+		client:  httputil.NewSearchClient(httputil.WithTimeout(3 * time.Second)),
 	}
 }
 

@@ -231,3 +231,16 @@ func (c *ResilientClient) doGet(rawURL string, headers map[string]string) ([]byt
 	}
 	return body, nil
 }
+
+// NewSearchClient 为搜索场景创建低延迟优先的客户端：
+//   - 0 次重试（失败即返回，其他 provider 兜底）
+//   - 2 次失败即熔断 30s
+//   - 默认 5s 超时（调用方可再 override）
+func NewSearchClient(opts ...Option) *ResilientClient {
+	base := []Option{
+		WithRetry(0, 0),
+		WithCircuitBreaker(2, 30*time.Second),
+		WithTimeout(5 * time.Second),
+	}
+	return NewResilientClient(append(base, opts...)...)
+}

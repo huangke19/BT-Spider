@@ -19,7 +19,7 @@ type TorrentKitty struct {
 func NewTorrentKitty() *TorrentKitty {
 	return &TorrentKitty{
 		baseURL: "https://www.torrentkitty.tv",
-		client:  httputil.NewResilientClient(),
+		client:  httputil.NewSearchClient(),
 	}
 }
 

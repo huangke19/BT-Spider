@@ -22,7 +22,7 @@ type ApiBay struct {
 func NewApiBay() *ApiBay {
 	return &ApiBay{
 		baseURL: "https://apibay.org",
-		client:  httputil.NewResilientClient(),
+		client:  httputil.NewSearchClient(),
 	}
 }
 
