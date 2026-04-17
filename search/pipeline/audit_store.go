@@ -207,7 +207,7 @@ func auditStartRun(keyword string, timeout time.Duration, strictMode bool, provi
 	return runID
 }
 
-func auditRecordProviderResult(runID int64, provider string, duration time.Duration, results []search.Result, err error) {
+func auditRecordProviderResultSync(runID int64, provider string, duration time.Duration, results []search.Result, err error) {
 	if runID == 0 {
 		return
 	}
@@ -294,7 +294,7 @@ func auditRecordProviderResult(runID int64, provider string, duration time.Durat
 	}
 }
 
-func auditRecordProviderTimeout(runID int64, provider string, timeout time.Duration) {
+func auditRecordProviderTimeoutSync(runID int64, provider string, timeout time.Duration) {
 	if runID == 0 {
 		return
 	}
@@ -318,7 +318,7 @@ func auditRecordProviderTimeout(runID int64, provider string, timeout time.Durat
 	}
 }
 
-func auditFinishRun(runID int64, status string, finalResultCount int, errMsg string) {
+func auditFinishRunSync(runID int64, status string, finalResultCount int, errMsg string) {
 	if runID == 0 {
 		return
 	}
@@ -357,6 +357,11 @@ func isAuditDBConfigured() bool {
 }
 
 func closeAuditDB() error {
+	if auditQueue != nil {
+		close(auditQueue)
+		auditWorkerWG.Wait()
+	}
+
 	auditMu.Lock()
 	defer auditMu.Unlock()
 	if auditDB == nil {
@@ -379,4 +384,98 @@ func auditHealthcheck() error {
 		return errors.New("审计数据库未初始化")
 	}
 	return db.Ping()
+}
+
+// --- 异步写入队列 ---
+
+type auditJob struct {
+	kind string // "provider_result" | "provider_timeout" | "finish_run"
+
+	// provider_result / provider_timeout 共用
+	runID    int64
+	provider string
+	duration time.Duration
+
+	// provider_result 专用
+	results []search.Result
+	runErr  error
+
+	// finish_run 专用
+	status     string
+	finalCount int
+	errMsg     string
+}
+
+var (
+	auditQueue     chan auditJob
+	auditQueueOnce sync.Once
+	auditWorkerWG  sync.WaitGroup
+)
+
+const auditQueueCap = 1024
+
+func initAuditQueue() {
+	auditQueueOnce.Do(func() {
+		auditQueue = make(chan auditJob, auditQueueCap)
+		auditWorkerWG.Add(1)
+		go runAuditWorker()
+	})
+}
+
+func runAuditWorker() {
+	defer auditWorkerWG.Done()
+	for job := range auditQueue {
+		switch job.kind {
+		case "provider_result":
+			auditRecordProviderResultSync(job.runID, job.provider, job.duration, job.results, job.runErr)
+		case "provider_timeout":
+			auditRecordProviderTimeoutSync(job.runID, job.provider, job.duration)
+		case "finish_run":
+			auditFinishRunSync(job.runID, job.status, job.finalCount, job.errMsg)
+		}
+	}
+}
+
+func auditRecordProviderResult(runID int64, provider string, duration time.Duration, results []search.Result, err error) {
+	if runID == 0 {
+		return
+	}
+	initAuditQueue()
+	// 深拷贝 results，避免生产者后续修改导致 race
+	cp := append([]search.Result(nil), results...)
+	job := auditJob{
+		kind: "provider_result", runID: runID, provider: provider,
+		duration: duration, results: cp, runErr: err,
+	}
+	select {
+	case auditQueue <- job:
+	default:
+		logger.Warn("audit queue full, dropping", "kind", "provider_result", "provider", provider)
+	}
+}
+
+func auditRecordProviderTimeout(runID int64, provider string, timeout time.Duration) {
+	if runID == 0 {
+		return
+	}
+	initAuditQueue()
+	job := auditJob{kind: "provider_timeout", runID: runID, provider: provider, duration: timeout}
+	select {
+	case auditQueue <- job:
+	default:
+		logger.Warn("audit queue full, dropping", "kind", "provider_timeout", "provider", provider)
+	}
+}
+
+func auditFinishRun(runID int64, status string, finalResultCount int, errMsg string) {
+	if runID == 0 {
+		return
+	}
+	initAuditQueue()
+	job := auditJob{kind: "finish_run", runID: runID, status: status, finalCount: finalResultCount, errMsg: errMsg}
+	select {
+	case auditQueue <- job:
+	default:
+		logger.Warn("audit queue full, dropping", "kind", "finish_run", "run_id", runID)
+	}
 }
