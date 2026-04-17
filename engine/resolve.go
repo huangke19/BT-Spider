@@ -50,6 +50,14 @@ func (e *Engine) ResolveSizes(results []search.Result, timeout time.Duration) []
 	return out
 }
 
+// ResolveSizeOne 对单个磁力同步拉取 size。失败返回空串，不 panic。
+func (e *Engine) ResolveSizeOne(magnet string, timeout time.Duration) string {
+	if magnet == "" {
+		return ""
+	}
+	return e.fetchSize(magnet, timeout)
+}
+
 // fetchSize 添加磁力链接、等待元数据、读取总大小，随即 drop torrent。
 func (e *Engine) fetchSize(magnet string, timeout time.Duration) string {
 	t, err := e.client.AddMagnet(magnet)

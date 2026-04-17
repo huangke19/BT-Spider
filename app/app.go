@@ -19,6 +19,7 @@ import (
 )
 
 // sizeResolveTimeout 对搜索结果中 Size 未知的条目，用 DHT 补全的单次超时。
+// Deprecated: 不再在 Search 中同步调用，仅保留供 ResolveSizeOne 参考。
 const sizeResolveTimeout = 8 * time.Second
 
 // ---- 类型重导出（让 UI 层只 import app，不直接依赖 engine / search） ----
@@ -65,16 +66,16 @@ func New(eng *engine.Engine, provs []search.Provider) *App {
 
 // --- 搜索 / 识别 ---
 
-// Search 执行一次搜索，并对 Size 未知的结果自动通过 DHT 补全大小。
+// Search 执行一次搜索。不再同步调用 ResolveSizes（决策 D4）；
+// 未知 size 的条目以 "未知" 原样返回，由 UI 按需触发 ResolveSizeOne 补全。
 func (a *App) Search(keyword string) ([]search.Result, error) {
-	results, err := pipeline.Search(keyword, a.providers)
-	if err != nil {
-		return nil, err
-	}
-	if len(results) > 0 {
-		results = a.engine.ResolveSizes(results, sizeResolveTimeout)
-	}
-	return results, nil
+	return pipeline.Search(keyword, a.providers)
+}
+
+// ResolveSizeOne 对单个磁力按需拉取 size。供 UI 光标聚焦时调用。
+// timeout 建议 3-5s。失败返回空字符串。
+func (a *App) ResolveSizeOne(magnet string, timeout time.Duration) string {
+	return a.engine.ResolveSizeOne(magnet, timeout)
 }
 
 // ResolveLocal 使用本地别名 + 严格格式识别解析输入（同步，无网络）。

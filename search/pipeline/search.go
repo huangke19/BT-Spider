@@ -137,22 +137,10 @@ func finalizeResults(allResults []search.Result, keyword string, strictMode bool
 	allResults = filterByKeyword(allResults, keyword)
 	allResults = dedup(allResults)
 
-	var unknownHashes []string
-	for _, r := range allResults {
-		if r.Seeders == -1 && r.InfoHash != "" {
-			unknownHashes = append(unknownHashes, r.InfoHash)
-		}
-	}
-	if len(unknownHashes) > 0 {
-		scraped := ScrapeSeeders(unknownHashes, 3*time.Second)
-		for i := range allResults {
-			if allResults[i].Seeders == -1 {
-				if c, ok := scraped[strings.ToUpper(allResults[i].InfoHash)]; ok {
-					allResults[i].Seeders = c
-				} else {
-					allResults[i].Seeders = 0
-				}
-			}
+	// 决策 D4：移除同步 ScrapeSeeders，未知 seeders 置 0。
+	for i := range allResults {
+		if allResults[i].Seeders == -1 {
+			allResults[i].Seeders = 0
 		}
 	}
 
