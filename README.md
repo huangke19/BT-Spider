@@ -19,6 +19,41 @@
 - 支持分享率 / 保种时长自动停止做种
 - 代理支持（`HTTP_PROXY` / `HTTPS_PROXY` 环境变量）
 
+## 流程图
+
+```mermaid
+flowchart TD
+    A["用户输入<br/>TUI 命令 / bt-download 参数 / magnet 链接"] --> B{"输入类型"}
+
+    B -->|"直接 magnet"| H["engine.AddMagnetAsync"]
+    B -->|"搜索关键词"| C["App / CLI 发起搜索"]
+
+    C --> D["可选 NLP 识别链<br/>本地别名 → 严格格式解析 → TMDB → Groq"]
+    C --> E["pipeline.Search / SearchStream"]
+    D --> F{"是否得到更精确片名"}
+    F -->|"是"| E
+    F -->|"否"| E
+
+    E --> G["检查 24h LRU 缓存"]
+    G -->|"命中"| I["直接返回缓存结果"]
+    G -->|"未命中"| J["并发请求 Providers<br/>ApiBay / BT4G / TorrentKitty"]
+
+    J --> K["聚合结果"]
+    K --> L["关键词过滤 / 去重 / 严格电影过滤"]
+    L --> M["按做种数排序"]
+    M --> N["写入 SQLite 搜索审计"]
+    M --> O["TUI 流式刷新 / CLI 预览候选"]
+    I --> O
+
+    O --> P{"用户选择结果?"}
+    P -->|"选择序号"| H
+    P -->|"继续搜索"| A
+
+    H --> Q["创建下载任务<br/>补充 trackers / 等待元数据"]
+    Q --> R["下载状态机<br/>等待元数据 → 下载中 → 做种中/完成/失败/取消"]
+    R --> S["事件与快照回传<br/>TUI 进度条 / CLI 文本或 JSON 输出"]
+```
+
 ## 快速开始
 
 ### 编译
