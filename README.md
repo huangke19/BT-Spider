@@ -17,12 +17,16 @@
 ## 功能
 
 - 聚合 4 个搜索源：ApiBay、BT4G、YTS、TorrentKitty（1337x/BTDigg/Nyaa/EZTV 已移除）
+- 流式搜索结果：provider 返回即刷新，首屏不再等待最慢源
+- 24h 内存缓存（最多 256 条）：重复搜索可瞬时返回
+- 启动连接预热（TLS/DNS）+ 共享 HTTP Transport，减少首个请求冷启动开销
+- 搜索专用低延迟客户端：0 重试 + 更快失败转移，避免单源拖慢全局
 - 并发搜索、自动去重、按做种数降序排列
 - 搜索带总超时保护，慢源不会一直拖住整体结果
 - 本地搜索审计数据库：记录每次搜索会话、每个搜索源的成功/失败，以及返回的全部条目（用于后续统计分析）
-- **TUI 实时界面**：多任务进度条同屏刷新，山下搜边不阻塞；状态变更（元数据就绪/完成/失败）通过事件流即时推送，并保留 500ms 轮询刚新进度
+- **TUI 实时界面**：多任务进度条同屏刷新，搜索流式更新不阻塞输入；状态变更（元数据就绪/完成/失败）通过事件流即时推送，并保留 500ms 轮询刷新进度
 - **Headless CLI**：供脚本 / AI 助手通过子进程调用，支持 JSON 流式输出
-- **弹性 HTTP 客户端**：所有搜索源统一使用带指数退退 + per-host 熔断器的 `ResilientClient`，单源刻宕不影响其他源
+- **弹性 HTTP 客户端**：所有搜索源统一使用带指数退避 + per-host 熔断器的 `ResilientClient`，单源宕机不影响其他源
 - 中文搜索：CJK 关键词采用 bigram 分词，避免因无空格导致的误过滤
 - 自动拉取 tracker 列表（每 24h 刷新），提升连接成功率
 - 代理支持（`HTTP_PROXY` / `HTTPS_PROXY`）
@@ -127,7 +131,7 @@ bt> Interstellar 2014 1080P
 
 ```json
 {"event":"search","keyword":"Ubuntu 24.04","ts":"2026-04-14T10:22:01+08:00"}
-{"event":"result","index":1,"name":"ubuntu-24.04-desktop-amd64.iso","size":"4.7 GB","seeders":523,"leechers":12,"source":"1337x","ts":"..."}
+{"event":"result","index":1,"name":"ubuntu-24.04-desktop-amd64.iso","size":"4.7 GB","seeders":523,"leechers":12,"source":"BT4G","ts":"..."}
 {"event":"progress","percent":"63.2","completed":"3.0 GB","total":"4.7 GB","speed":"15.2 MB/s","peers":42,"eta":"1m52s","ts":"..."}
 {"event":"done","name":"ubuntu-24.04-desktop-amd64.iso","dir":"/Users/you/Downloads/BT-Spider","ts":"..."}
 ```
@@ -153,12 +157,8 @@ bt> Interstellar 2014 1080P
 | 来源 | 类型 | 接口 |
 |------|------|------|
 | ApiBay (TPB) | 综合 | JSON API |
-| BTDigg | 综合 (DHT) | HTML 爬取 |
 | BT4G | 综合 | RSS |
 | YTS | 电影 | JSON API |
-| EZTV | 剧集 | JSON API |
-| Nyaa | 动漫 | RSS |
-| ~~1337x~~ | ~~综合~~ | ~~HTML 爬取~~ |
 | TorrentKitty | 综合 | HTML 爬取 |
 
 ## 下载
@@ -240,15 +240,13 @@ export HTTPS_PROXY=http://127.0.0.1:7890
 ├── search/
 │   ├── types.go                  # 共享域类型：Result、Provider 接口、MovieResolution
 │   ├── parse.go                  # 共享解析工具：IsCJK、ParseMovieTitleYear 等
-│   ├── providers/                # 各搜索源实现（8 个）
+│   ├── providers/                # 各搜索源实现（默认启用 4 个）
 │   │   ├── registry.go           # DefaultProviders()
 │   │   ├── apibay.go             # ThePirateBay
-│   │   ├── btdig.go              # BTDigg
 │   │   ├── bt4g.go               # BT4G
 │   │   ├── yts.go                # YTS
-│   │   ├── eztv.go               # EZTV
-│   │   ├── nyaa.go               # Nyaa
-│   │   ├── leet337x.go           # 1337x
+│   │   ├── eztv.go               # EZTV（实现保留，默认未启用）
+│   │   ├── leet337x.go           # 1337x（已从默认注册表移除）
 │   │   └── torrentkitty.go       # TorrentKitty
 │   ├── query/                    # 用户输入 → 标准化搜索词
 │   │   ├── resolver.go           # Resolver 接口与链式组合
@@ -258,12 +256,16 @@ export HTTPS_PROXY=http://127.0.0.1:7890
 │   │   └── groq_resolver.go      # Groq LLM 兜底
 │   └── pipeline/                 # 搜索编排与后处理
 │       ├── search.go             # Search/SearchWithTimeout、去重、关键词过滤
+│       ├── stream.go             # SearchStream 流式搜索 API
+│       ├── cache.go              # 24h 内存搜索缓存
+│       ├── audit_store.go        # 搜索审计（异步写入）
 │       ├── strict_movie.go       # 严格电影过滤与评分
 │       └── scrape.go             # BEP 15 UDP 补全做种数
 └── pkg/
     ├── httputil/
-    │   ├── client.go             # 基础 HTTP 客户端（代理、UA、超时）
-    │   └── resilient.go          # ResilientClient（自动重试 + per-host 熔断器）
+  │   ├── client.go             # 基础 HTTP 客户端（共享 Transport）
+  │   ├── transport.go          # 共享 Transport + 启动预热
+  │   └── resilient.go          # ResilientClient / NewSearchClient
     ├── logger/
     │   └── logger.go             # 结构化日志（JSON，写入 ~/Library/Logs/BT-Spider/）
     └── utils/

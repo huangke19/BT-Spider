@@ -3,18 +3,22 @@
 
 ## 2026-04-17（性能优化）
 
+### Added
+- 新增共享 HTTP Transport 与启动预热（TLS/DNS）
+- 新增搜索专用低延迟客户端 `NewSearchClient`（0 重试、快速熔断）
+- 新增 24h 内存搜索缓存（最大 256 条）
+- 新增流式搜索 API：`search/pipeline/SearchStream` 与 `app/SearchStream`
+- TUI 接入流式搜索更新，并支持按需补全单条资源大小
+- TMDB 查询缓存（7 天，含 miss 缓存）
+
+### Changed
+- 搜索默认关闭同步 `ResolveSizes`，改为按需单条补全
+- 搜索路径移除非严格模式下的同步 `ScrapeSeeders` 阻塞
+- 审计数据库写入改为异步队列，退出时 drain 保证落盘
+- tracker 默认列表扩充，提升热门资源元数据获取速度
+
 ### Removed
 - 移除 1337x 搜索源（详情页抓取带来 5-15s 延迟，显著拖累整体响应）
-
-
-- **移除无用搜索源**：基于 `search_history.db` 审计库的实测数据分析：
-  - **BTDigg**：23/23 次全部失败（HTTP 429 限速 + 熔断器），删除 `btdig.go`
-  - **Nyaa**：26/26 次成功但返回 0 条结果（动漫源，电影搜索无用），删除 `nyaa.go`
-  - **YTS**：删除后恢复，留待后续验证
-  - 从 `DefaultProviders()` 注册表移除 BTDigg/Nyaa
-  - 从 `sourceTrustScore()` 移除已删源的信任分
-- 剩余 5 个搜索源：ThePirateBay、BT4G、1337x、TorrentKitty、YTS
-- 更新 README.md 搜索源数量描述
 
 
 ## 2026-04-17
