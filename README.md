@@ -1,105 +1,86 @@
-# BT-Spider 🕷
+# bt-spider
 
-
-磁力搜索 + BT 下载工具。聚合多个搜索源，按做种数排序；**支持交互式 TUI** 与 **无头命令行** 两种使用方式。
-
-## 日志系统
-
-所有核心流程、错误、HTTP 请求、provider 搜索、下载状态机均有结构化日志，便于排查问题。
-
-- 日志以 JSON 格式写入 `~/Library/Logs/BT-Spider/bt-spider-YYYY-MM-DD.log`，可用 `jq`/`grep` 检索。
-- Web API 日志支持 HTTP 状态码、耗时、路径、方法，分 info/warn/error 级别。
-- 下载、搜索、DHT、provider 失败/超时等场景均有详细日志。
-- 日志目录/级别可通过 `config.json` 配置。
-
-如遇出错，**请优先查阅日志文件定位原因**。
+磁力搜索 + BT 下载工具。聚合 4 个搜索源，结果流式推送、按做种数排序；支持**交互式 TUI** 与**无头命令行**两种使用方式。
 
 ## 功能
 
-- 聚合 4 个搜索源：ApiBay、BT4G、YTS、TorrentKitty（1337x/BTDigg/Nyaa/EZTV 已移除）
-- 流式搜索结果：provider 返回即刷新，首屏不再等待最慢源
-- 24h 内存缓存（最多 256 条）：重复搜索可瞬时返回
-- 启动连接预热（TLS/DNS）+ 共享 HTTP Transport，减少首个请求冷启动开销
-- 搜索专用低延迟客户端：0 重试 + 更快失败转移，避免单源拖慢全局
-- 并发搜索、自动去重、按做种数降序排列
-- 搜索带总超时保护，慢源不会一直拖住整体结果
-- 本地搜索审计数据库：记录每次搜索会话、每个搜索源的成功/失败，以及返回的全部条目（用于后续统计分析）
-- **TUI 实时界面**：多任务进度条同屏刷新，搜索流式更新不阻塞输入；状态变更（元数据就绪/完成/失败）通过事件流即时推送，并保留 500ms 轮询刷新进度
-- **Headless CLI**：供脚本 / AI 助手通过子进程调用，支持 JSON 流式输出
-- **弹性 HTTP 客户端**：所有搜索源统一使用带指数退避 + per-host 熔断器的 `ResilientClient`，单源宕机不影响其他源
-- 中文搜索：CJK 关键词采用 bigram 分词，避免因无空格导致的误过滤
-- 自动拉取 tracker 列表（每 24h 刷新），提升连接成功率
-- 代理支持（`HTTP_PROXY` / `HTTPS_PROXY`）
-- 支持按分享率或保种时长自动停止做种
+- 聚合 4 个搜索源：ApiBay（ThePirateBay）、BT4G、TorrentKitty、YTS，并发请求
+- **流式搜索**：每个 provider 返回即刷新 TUI，不等待最慢的源
+- **24h 内存搜索缓存**（LRU，最多 256 条）：同一关键词重复搜索瞬时返回
+- **NLP 电影识别**：中英文别名 → 严格格式解析 → TMDB API（含 7 天响应缓存）→ Groq LLM 兜底
+- 启动时异步预热常用 provider 域名的 TLS/DNS 连接，降低首次搜索冷启动延迟
+- 全局共享 HTTP Transport，所有 provider 复用连接池（HTTP/2 + keep-alive）
+- 搜索专用客户端：0 重试 + 2 次失败即触发熔断，单源异常不拖慢整体
+- 磁力链接内置 17 个 tracker，提升元数据获取和连接成功率
+- 自动拉取 tracker 列表（每 24h 刷新）
+- 种子大小按需补全（DHT 元数据拉取，仅在下载时触发）
+- 搜索审计数据库（SQLite，异步写入）：记录每次搜索会话、各 provider 结果及条目明细
+- 结构化日志（JSON 格式，写入 `~/Library/Logs/BT-Spider/`）
+- 支持分享率 / 保种时长自动停止做种
+- 代理支持（`HTTP_PROXY` / `HTTPS_PROXY` 环境变量）
 
 ## 快速开始
 
 ### 编译
 
 ```bash
-# 主程序（TUI）
+# TUI 主程序
 go build -o bt-spider .
 
-# 无头下载器
+# 无头下载器（脚本 / AI 调用）
 go build -o bt-download ./cmd/download
 ```
 
-### TUI 模式（交互式，推荐日常使用）
+### TUI 模式
 
 ```bash
 HTTPS_PROXY=http://127.0.0.1:7890 ./bt-spider
 ```
 
-进入后：
+启动后进入全屏界面，上半部分显示搜索结果，下半部分显示下载任务进度条，每 500ms 自动刷新。
+
+#### TUI 命令
+
+| 输入 | 行为 |
+|------|------|
+| 任意文本 | 先用原词发起流式搜索（投机搜索），同时异步走 NLP 识别；若 NLP 结果与原词不同，自动切换到精确查询 |
+| `search <关键词>` | 直接对关键词发起流式搜索，不经过 NLP |
+| `movie <片名>` | 用本地别名库 + 严格格式解析器识别片名，成功后发起流式搜索 |
+| `<序号>` | 下载搜索结果列表中对应的条目 |
+| `magnet:?xt=...` | 直接添加磁力链接到下载队列 |
+| `c <序号>` | 取消指定下载任务并从列表移除 |
+| `clear` | 移除所有已完成 / 失败 / 取消的任务 |
+| `q` / `quit` / `exit` | 退出 |
+| Ctrl+C | 退出 |
+
+**示例：**
 
 ```
+bt> 星际穿越 2014 1080P
+# → 投机搜索 "星际穿越 2014 1080P" + NLP 识别中...
+# → NLP 解析为 Interstellar 2014，切换精确查询
+
 bt> search The Bourne Supremacy 2004
-bt> 1                    # 下载第 1 条结果
-bt> 2                    # 再加一个任务，两个并行下载
-bt> c 1                  # 取消任务 #1
-bt> q                    # 退出
-```
+# → 直接搜索，流式更新，ThePirateBay 返回后先显示，其余源陆续追加
 
-TUI 界面会每 500ms 刷新，所有任务的进度条 / 速度 / peers / ETA 同屏实时显示。
-
-| TUI 命令 | 说明 |
-|----------|------|
-| `search <关键词>` | 搜索（异步，不阻塞输入） |
-| `movie <片名 [年份] [1080P]>` | 智能电影搜索：自动识别中英文别名、补全年份，结果严格按标题/分辨率/做种数过滤 |
-| `<片名 年份 1080P>` | 直接输入带年份和 1080P 的英文片名，触发严格电影搜索模式（同 `movie`） |
-（2026-04-16 起，日志系统已覆盖 engine/trackers.go、cmd/web/main.go 等所有模块）
-| `<序号>` | 下载搜索结果中的对应条目 |
-| `magnet:?xt=...` | 直接添加磁力链接 |
-| `c <下载序号>` | 取消指定下载任务 |
-| `clear` | 清理已完成 / 失败 / 取消的任务 |
-| `q` / `quit` / `Ctrl+C` | 退出 |
-
-**电影搜索示例：**
-
-```
 bt> movie 美国队长第二部
-# → 已解析为: Captain America: The Winter Soldier 2014 1080P
+# → 本地别名识别 → Captain America: The Winter Soldier 2014 1080P → 搜索
 
-bt> movie Inception 2010 1080P
-# → 严格模式：只保留片名匹配、1080P、做种数最高的结果
+bt> 1
+# → 下载搜索结果第 1 条
 
-bt> Interstellar 2014 1080P
-# → 直接输入也会触发严格电影搜索
+bt> c 1
+# → 取消下载任务 #1
 ```
 
-严格电影搜索（`movie` 命令或"英文片名 + 年份 + 1080P"格式）会：
-- 去掉标题中的冠词（The / A / An），避免漏匹配
-- 过滤掉 720P / 4K / 1080i 等非目标分辨率
-- 同时拉取做种数，按来源可信度 + 做种数 + 文件大小合理性综合排序
+> TUI 需要真实终端（TTY）。通过管道、AI 助手子进程等非 TTY 环境调用请改用 `bt-download`。
 
-> ⚠️ **TUI 需要真实终端（TTY）**。通过管道、AI 助手子进程、后台服务等非 TTY 环境调用会报错，请改用 Headless 模式。
+### 无头下载器（bt-download）
 
-### Headless 模式（脚本 / AI 调用）
-
-进度以**一行一条**的流式日志输出（非 TTY 友好）。
+适合脚本、CI 或 AI 助手通过子进程调用，进度以每行一条流式输出，支持 JSON 模式。
 
 ```bash
-# 关键词搜索 + 下载做种数最高的
+# 关键词搜索，自动选做种数最高的第 1 条
 ./bt-download "The Bourne Supremacy 2004"
 
 # 指定选第 2 个结果
@@ -108,8 +89,18 @@ bt> Interstellar 2014 1080P
 # 直接下载磁力链接
 ./bt-download 'magnet:?xt=urn:btih:90FD7709140B1C82C32E6014FB1F99A317DB68A3'
 
-# JSON 输出（脚本解析友好）
+# JSON 流式输出 + 指定下载目录
 ./bt-download --json --dir /tmp/dl "Ubuntu 24.04"
+```
+
+**所有选项：**
+
+```
+--dir <path>       下载目录（默认使用 config.json 或 ~/Downloads/BT-Spider）
+--pick <N>         搜索模式下选第 N 个结果（默认 1，按做种数排序）
+--show <N>         搜索模式下预览前 N 条候选（默认 5）
+--json             每行输出一条 JSON（默认文本格式）
+--interval <dur>   进度输出间隔（默认 2s）
 ```
 
 **文本输出样例：**
@@ -117,66 +108,42 @@ bt> Interstellar 2014 1080P
 ```
 [search] keyword="The Bourne Supremacy 2004"
 [result] [1] The Bourne Supremacy (2004) 1080p BrRip x264 YIFY | 1.51 GB | S:154 L:5 | ThePirateBay
-[result] [2] The Bourne Supremacy 2004 1080p BluRay DD+ 5.1 x265-EDGE2020 | 3.91 GB | S:42 L:8 | ThePirateBay
-...
+[result] [2] The Bourne Supremacy 2004 1080p BluRay x265 | 3.91 GB | S:42 L:8 | ThePirateBay
 [picked] name="The Bourne Supremacy (2004) 1080p BrRip x264 YIFY" dir=/Users/you/Downloads/BT-Spider
-[meta] 等待元数据...  peers=7
+[meta]   等待元数据...  peers=7
 [progress] 2.1%  32 MB/1.51 GB  ↓ 8.5 MB/s  peers=12  ETA 2m54s
-[progress] 5.4%  83 MB/1.51 GB  ↓ 11.2 MB/s  peers=28  ETA 2m10s
-...
-[done] ✅ The Bourne Supremacy (2004) 1080p BrRip x264 YIFY -> /Users/you/Downloads/BT-Spider
+[done]   ✅ The Bourne Supremacy (2004) 1080p BrRip x264 YIFY -> /Users/you/Downloads/BT-Spider
 ```
 
 **JSON 输出样例（每行一条）：**
 
 ```json
-{"event":"search","keyword":"Ubuntu 24.04","ts":"2026-04-14T10:22:01+08:00"}
+{"event":"search","keyword":"Ubuntu 24.04","ts":"2026-04-17T10:22:01+08:00"}
 {"event":"result","index":1,"name":"ubuntu-24.04-desktop-amd64.iso","size":"4.7 GB","seeders":523,"leechers":12,"source":"BT4G","ts":"..."}
 {"event":"progress","percent":"63.2","completed":"3.0 GB","total":"4.7 GB","speed":"15.2 MB/s","peers":42,"eta":"1m52s","ts":"..."}
-{"event":"done","name":"ubuntu-24.04-desktop-amd64.iso","dir":"/Users/you/Downloads/BT-Spider","ts":"..."}
+{"event":"done","name":"ubuntu-24.04-desktop-amd64.iso","dir":"/tmp/dl","ts":"..."}
 ```
 
-**所有选项：**
-
-```
---dir <path>          下载目录（默认使用 config.json 或 ~/Downloads/BT-Spider）
---pick <N>            搜索模式下选第 N 个结果（默认 1）
---show <N>            搜索模式下预览前 N 条候选（默认 5）
---json                输出 JSON 每行一条（默认文本）
---interval <dur>      进度输出间隔（默认 2s）
-```
-
-**退出码：** `0` 成功 / `1` 失败 / `2` 参数错误 / `130` 用户中断
-
-### Web UI 模式（浏览器）
-
-> Web UI 已在代码重构中移除，当前版本只保留 TUI 和 Headless 两种模式。
+**退出码：** `0` 成功 / `1` 失败 / `2` 参数错误 / `130` 用户中断（Ctrl+C）
 
 ## 搜索源
 
-| 来源 | 类型 | 接口 |
-|------|------|------|
-| ApiBay (TPB) | 综合 | JSON API |
-| BT4G | 综合 | RSS |
-| YTS | 电影 | JSON API |
-| TorrentKitty | 综合 | HTML 爬取 |
-
-## 下载
-
-文件保存至 `~/Downloads/BT-Spider/`，可在 `config.json` 或 `--dir` 参数中覆盖。
-
-下载时会自动从 [trackerslist.com](https://trackerslist.com/best.txt) 拉取最新 tracker 列表（每 24 小时刷新），提升连接成功率。
-程序启动时会先使用内置 fallback trackers，远端列表在后台异步刷新，不再阻塞启动。
-
-若 2 分钟内未能获取种子元数据（通常是 peer 数不足），任务会标记为失败。
+| 来源 | 类型 | 接口 | 默认启用 |
+|------|------|------|---------|
+| ApiBay（ThePirateBay） | 综合 | JSON API | ✅ |
+| BT4G | 综合 | RSS | ✅ |
+| TorrentKitty | 综合 | HTML 解析 | ✅ |
+| YTS | 电影 | JSON API | ✅ |
+| 1337x | 综合 | HTML 解析 | ❌ 已禁用（详情页延迟高） |
+| EZTV | 美剧 | JSON API | ❌ 未启用 |
 
 ## 配置
 
-可选的 `config.json` 示例：
+根目录 `config.json` 为可选配置文件，缺失时使用全部默认值。
 
 ```json
 {
-  "download_dir": "/Users/you/Downloads/BT-Spider",
+  "download_dir": "",
   "max_results": 100,
   "max_conns": 80,
   "listen_port": 0,
@@ -184,100 +151,143 @@ bt> Interstellar 2014 1080P
   "seed_ratio_limit": 1.0,
   "seed_time_limit": "30m",
   "enable_tracker_list": true,
+  "tmdb_api_key": "",
+  "groq_api_key": "",
+  "log_dir": "",
+  "log_level": "info",
   "search_db_path": ""
 }
 ```
 
-- `search_db_path` 为空时，默认写入 `~/Library/Application Support/BT-Spider/search_history.db`
-- 数据库会自动建表，包含 `search_runs`（搜索会话）、`provider_attempts`（搜索源调用结果）、`provider_items`（搜索条目明细）
+| 字段 | 默认值 | 说明 |
+|------|--------|------|
+| `download_dir` | `~/Downloads/BT-Spider` | 下载目录 |
+| `max_results` | `100` | 单次搜索最大返回条数 |
+| `max_conns` | `80` | 每个种子最大连接数 |
+| `listen_port` | `0`（随机） | BT 监听端口，0 表示自动分配 |
+| `seed` | `false` | 下载完成后是否继续做种 |
+| `seed_ratio_limit` | `1.0` | 分享率达到此值时停止做种（`0` = 禁用） |
+| `seed_time_limit` | `"30m"` | 保种时长上限（`"0s"` = 禁用） |
+| `enable_tracker_list` | `true` | 是否自动拉取远端 tracker 列表 |
+| `tmdb_api_key` | `""` | TMDB API Bearer Token（用于 NLP 电影识别） |
+| `groq_api_key` | `""` | Groq API Key（NLP 识别的 LLM 兜底） |
+| `log_dir` | `~/Library/Logs/BT-Spider/` | 日志目录 |
+| `log_level` | `"info"` | 日志级别：`debug` / `info` / `warn` / `error` |
+| `search_db_path` | `~/Library/Application Support/BT-Spider/search_history.db` | 搜索审计数据库路径 |
 
-其中 `listen_port: 0` 表示自动选择可用端口，能减少固定端口被占用导致的启动失败。
-如果开启 `seed: true`，则会在下载完成后继续做种，并在满足以下任一条件时自动停止：
+TUI 启动时可以用命令行参数覆盖下载目录：
 
-- `seed_ratio_limit`: 分享率达到该值后停止，设为 `0` 表示禁用该条件
-- `seed_time_limit`: 保种达到该时长后停止，例如 `"30m"`、`"2h"`、`"0s"`；设为 `"0s"` 表示禁用该条件
+```bash
+./bt-spider /Volumes/External/Downloads
+```
+
+## NLP 电影识别
+
+直接输入中英文片名时，TUI 会并行走以下识别链（无需加任何命令前缀）：
+
+1. **本地别名库**：内置常见中英文别名映射，无网络延迟
+2. **严格格式解析**：识别 `片名 年份 分辨率` 格式（如 `Inception 2010 1080P`）
+3. **TMDB API**：查询标准片名及年份，结果缓存 7 天；请求超时 800ms
+4. **Groq LLM**：前三步均失败时调用，作为最终兜底
+
+识别成功后自动切换为精确查询，覆盖投机搜索的中间结果。
 
 ## 代理
 
 ```bash
 export HTTPS_PROXY=http://127.0.0.1:7890
-./bt-spider           # 或 ./bt-download ...
+./bt-spider
+# 或
+./bt-download "关键词"
 ```
 
-## 关于中文搜索
+## 日志
 
-本项目对 CJK 关键词采用 **bigram（二元语法）** 分词，避免 ASCII 式的空格分词在中文上失效的问题：
+- 格式：JSON，结构化字段
+- 路径：`~/Library/Logs/BT-Spider/bt-spider-YYYY-MM-DD.log`
+- 内容：HTTP 请求、搜索 provider 调用、下载状态机转换、错误详情
 
+```bash
+# 按关键词过滤
+grep '"level":"error"' ~/Library/Logs/BT-Spider/bt-spider-$(date +%F).log | jq .
 ```
-"谍影重重第二部"  →  [谍影, 影重, 重重, 重第, 第二, 二部]
-```
 
-搜索结果标题至少需命中一半以上 bigram 才会保留。纯英文关键词仍按空格分词。
+## 搜索审计数据库
+
+每次搜索均异步写入 SQLite（WAL 模式，不阻塞搜索流程）。
+
+**表结构：**
+
+- `search_runs`：搜索会话（关键词、总耗时、结果数、状态）
+- `provider_attempts`：每个 provider 的调用结果（耗时、结果数、错误信息）
+- `provider_items`：每条搜索结果的完整字段（名称、大小、做种数、磁力、来源）
+
+```bash
+sqlite3 ~/Library/Application\ Support/BT-Spider/search_history.db \
+  "SELECT keyword, final_result_count, finished_at FROM search_runs ORDER BY started_at DESC LIMIT 10"
+```
 
 ## 项目结构
 
 ```
 .
-├── main.go                       # TUI 主入口（bubbletea）
+├── main.go                          # TUI 入口（bubbletea）
+├── config.json                      # 可选配置文件
 ├── app/
-│   └── app.go                    # 业务编排层（UI 与 engine/search 之间的桥梁）
-├── cmd/
-│   └── download/
-│       └── main.go               # Headless CLI（脚本/AI 调用）
-├── tui/
-│   ├── tui.go                    # bubbletea Model/Update/View，事件驱动
-│   └── cmds.go                   # tea.Cmd 工厂（异步副作用与 engine 事件订阅）
+│   ├── app.go                       # 业务编排层（TUI/CLI 共用）
+│   └── stream.go                    # App.SearchStream 流式搜索转发
+├── cmd/download/
+│   └── main.go                      # bt-download 无头 CLI
 ├── config/
-│   └── config.go                 # 配置（下载目录、最大结果数、连接数等）
+│   └── config.go                    # 配置加载，DefaultConfig
 ├── engine/
-│   ├── engine.go                 # 下载引擎、任务注册表、事件 channel
-│   ├── event.go                  # 离散状态变更事件（MetaReceived/Done/Seeding/…）
-│   ├── handle.go                 # TorrentHandle 接口（便于单元测试 mock）
-│   ├── download.go               # 异步下载、状态机、EWMA 速度/ETA
-│   ├── download_test.go          # Download 状态机 9 个单元测试
-│   ├── resolve.go                # DHT 补全种子大小
-│   └── trackers.go               # Tracker 列表自动更新
+│   ├── engine.go                    # BT 引擎，任务注册表，事件 channel
+│   ├── download.go                  # 异步下载状态机，EWMA 速度/ETA
+│   ├── download_test.go             # 状态机单元测试
+│   ├── event.go                     # 离散事件类型定义
+│   ├── handle.go                    # TorrentHandle 接口
+│   ├── resolve.go                   # DHT 按需补全种子大小
+│   └── trackers.go                  # Tracker 列表自动更新
 ├── search/
-│   ├── types.go                  # 共享域类型：Result、Provider 接口、MovieResolution
-│   ├── parse.go                  # 共享解析工具：IsCJK、ParseMovieTitleYear 等
-│   ├── providers/                # 各搜索源实现（默认启用 4 个）
-│   │   ├── registry.go           # DefaultProviders()
-│   │   ├── apibay.go             # ThePirateBay
-│   │   ├── bt4g.go               # BT4G
-│   │   ├── yts.go                # YTS
-│   │   ├── eztv.go               # EZTV（实现保留，默认未启用）
-│   │   ├── leet337x.go           # 1337x（已从默认注册表移除）
-│   │   └── torrentkitty.go       # TorrentKitty
-│   ├── query/                    # 用户输入 → 标准化搜索词
-│   │   ├── resolver.go           # Resolver 接口与链式组合
-│   │   ├── movie_resolver.go     # 本地别名 + 严格格式解析（无网络）
-│   │   ├── nlp_resolver.go       # NLP 预处理（中文数字、意图清洗）
-│   │   ├── tmdb.go               # TMDB API 标题标准化
-│   │   └── groq_resolver.go      # Groq LLM 兜底
-│   └── pipeline/                 # 搜索编排与后处理
-│       ├── search.go             # Search/SearchWithTimeout、去重、关键词过滤
-│       ├── stream.go             # SearchStream 流式搜索 API
-│       ├── cache.go              # 24h 内存搜索缓存
-│       ├── audit_store.go        # 搜索审计（异步写入）
-│       ├── strict_movie.go       # 严格电影过滤与评分
-│       └── scrape.go             # BEP 15 UDP 补全做种数
+│   ├── types.go                     # 公共类型：Result、Provider 接口、MovieResolution、BuildMagnet
+│   ├── parse.go                     # 工具函数：IsCJK、ParseMovieTitleYear 等
+│   ├── providers/
+│   │   ├── registry.go              # DefaultProviders()（返回 4 个启用的源）
+│   │   ├── apibay.go                # ApiBay（ThePirateBay）JSON API
+│   │   ├── bt4g.go                  # BT4G RSS
+│   │   ├── torrentkitty.go          # TorrentKitty HTML 解析
+│   │   ├── yts.go                   # YTS JSON API
+│   │   ├── leet337x.go              # 1337x（已禁用）
+│   │   └── eztv.go                  # EZTV（未启用）
+│   ├── query/
+│   │   ├── resolver.go              # Resolver 接口与链式组合
+│   │   ├── nlp_resolver.go          # NLP 预处理（中文数字、意图词清洗）
+│   │   ├── nlp_resolver_test.go
+│   │   ├── movie_resolver.go        # 本地别名库 + 严格格式解析
+│   │   ├── tmdb.go                  # TMDB API + 7 天响应缓存
+│   │   └── groq_resolver.go         # Groq LLM 兜底
+│   └── pipeline/
+│       ├── search.go                # Search / SearchWithTimeout，去重，关键词过滤
+│       ├── stream.go                # SearchStream 流式 API
+│       ├── cache.go                 # 24h LRU 搜索缓存（max 256 条）
+│       ├── audit_store.go           # 搜索审计 SQLite（异步写入）
+│       ├── strict_movie.go          # 严格电影结果过滤与评分
+│       ├── scrape.go                # UDP Tracker 补全做种数
+│       └── filter_test.go
+├── tui/
+│   ├── tui.go                       # bubbletea Model / Update / View
+│   └── cmds.go                      # tea.Cmd 工厂（所有异步副作用）
 └── pkg/
     ├── httputil/
-  │   ├── client.go             # 基础 HTTP 客户端（共享 Transport）
-  │   ├── transport.go          # 共享 Transport + 启动预热
-  │   └── resilient.go          # ResilientClient / NewSearchClient
+    │   ├── transport.go             # 全局共享 Transport + 启动预热
+    │   ├── client.go                # NewClient（基础 HTTP 客户端）
+    │   ├── resilient.go             # ResilientClient / NewSearchClient
+    │   └── resilient_test.go
     ├── logger/
-    │   └── logger.go             # 结构化日志（JSON，写入 ~/Library/Logs/BT-Spider/）
+    │   └── logger.go                # 结构化日志（JSON）
     └── utils/
-        └── format.go             # FormatBytes、FormatDuration
+        └── format.go                # FormatBytes、FormatDuration
 ```
-
-## 相关项目
-
-| 项目 | 说明 |
-|------|------|
-| [BT-Books](https://github.com/huangke19/BT-Books) | 电子书下载工具（Z-Library） |
-| [BT-Music](https://github.com/huangke19/BT-Music) | 音乐下载工具（B站 yt-dlp + BT搜索） |
 
 ## 许可证
 
