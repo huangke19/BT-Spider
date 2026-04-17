@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -57,5 +58,41 @@ func eventCmd(a *app.App) tea.Cmd {
 			return nil
 		}
 		return engineEventMsg{event: ev}
+	}
+}
+
+// searchStreamStartCmd 发起一次流式搜索；返回的 msg 里携带 channel 和 cancel。
+// Model 收到后应立即调用 drainStreamCmd 消费。
+func searchStreamStartCmd(a *app.App, keyword string, generation int) tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+		return searchStreamStartMsg{
+			ch:         a.SearchStream(ctx, keyword, 0),
+			cancel:     cancel,
+			keyword:    keyword,
+			generation: generation,
+		}
+	}
+}
+
+// drainStreamCmd 从 channel 拿一条 update。Model 收到后再调一次直到 Done。
+func drainStreamCmd(ch <-chan app.SearchUpdate, generation int) tea.Cmd {
+	return func() tea.Msg {
+		upd, ok := <-ch
+		if !ok {
+			return searchStreamDoneMsg{generation: generation}
+		}
+		return searchStreamUpdateMsg{update: upd, generation: generation}
+	}
+}
+
+// resolveSizeCmd 对单条结果的 size 按需补全。
+func resolveSizeCmd(a *app.App, index int, magnet string) tea.Cmd {
+	return func() tea.Msg {
+		size := a.ResolveSizeOne(magnet, 4*time.Second)
+		if size == "" {
+			size = "未知"
+		}
+		return sizeResolvedMsg{index: index, size: size}
 	}
 }

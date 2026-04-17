@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
@@ -42,6 +43,27 @@ type engineEventMsg struct {
 	event app.EngineEvent
 }
 
+type searchStreamStartMsg struct {
+	ch         <-chan app.SearchUpdate
+	cancel     context.CancelFunc
+	keyword    string
+	generation int
+}
+
+type searchStreamUpdateMsg struct {
+	update     app.SearchUpdate
+	generation int
+}
+
+type searchStreamDoneMsg struct {
+	generation int
+}
+
+type sizeResolvedMsg struct {
+	index int
+	size  string
+}
+
 // --- 样式 ---
 
 var (
@@ -81,6 +103,12 @@ type Model struct {
 	height  int
 	// 最近一次拉到的下载快照（View 期间复用）
 	snapshots []app.DownloadSnapshot
+
+	// 流式搜索
+	searchCancel     context.CancelFunc           // 当前搜索的 cancel
+	searchGeneration int                          // 每次新搜索 +1，防止旧 update 污染
+	currentSearchCh  <-chan app.SearchUpdate      // 当前搜索的 channel
+	resolvingSize    map[int]bool                 // 正在 resolving 的结果索引
 }
 
 // New 创建一个初始化好的 Model
@@ -92,9 +120,10 @@ func New(a *app.App) Model {
 	ti.Focus()
 
 	return Model{
-		app:    a,
-		input:  ti,
-		status: fmt.Sprintf("下载目录: %s", a.DownloadDir()),
+		app:          a,
+		input:        ti,
+		status:       fmt.Sprintf("下载目录: %s", a.DownloadDir()),
+		resolvingSize: map[int]bool{},
 	}
 }
 
@@ -137,9 +166,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.isErr = true
 			return m, nil
 		}
-		m.status = msg.resolved.Display + " ..."
+		if equalKeyword(msg.resolved.Query, msg.original) {
+			// NLP 解析结果与原词相同，不重新搜索（原词搜索已在途中）
+			return m, nil
+		}
+		// 切换到精确查询
+		if m.searchCancel != nil {
+			m.searchCancel()
+		}
+		m.searchGeneration++
+		m.status = "切换到精确查询: " + msg.resolved.Display
 		m.isErr = false
-		return m, searchCmd(m.app, msg.resolved.Query)
+		return m, searchStreamStartCmd(m.app, msg.resolved.Query, m.searchGeneration)
 
 	case searchDoneMsg:
 		if msg.err != nil {
@@ -156,6 +194,53 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.status = fmt.Sprintf("找到 %d 个结果，输入序号下载", len(msg.results))
 			m.isErr = false
 		}
+		return m, nil
+
+	case searchStreamStartMsg:
+		if m.searchCancel != nil {
+			m.searchCancel() // 取消旧搜索
+		}
+		m.searchCancel = msg.cancel
+		m.currentSearchCh = msg.ch
+		m.status = "搜索中（流式）..."
+		m.isErr = false
+		return m, drainStreamCmd(msg.ch, msg.generation)
+
+	case searchStreamUpdateMsg:
+		if msg.generation != m.searchGeneration {
+			return m, nil // 旧的 update 丢弃
+		}
+		u := msg.update
+		if u.Err != nil {
+			m.status = "provider 错误: " + u.Provider + " " + u.Err.Error()
+			m.isErr = true
+		} else if len(u.Results) > 0 {
+			m.results = u.Results
+			m.resolvingSize = map[int]bool{}
+			if u.Provider != "" && !u.Done {
+				m.status = "来自 " + u.Provider + "（" + strconv.Itoa(len(u.Results)) + "）"
+				m.isErr = false
+			}
+		}
+		if u.Done {
+			m.searchCancel = nil
+			m.status = "搜索完成，共 " + strconv.Itoa(len(m.results)) + " 条"
+			m.isErr = false
+			return m, nil
+		}
+		return m, drainStreamCmd(m.currentSearchCh, msg.generation)
+
+	case searchStreamDoneMsg:
+		if msg.generation == m.searchGeneration {
+			m.searchCancel = nil
+		}
+		return m, nil
+
+	case sizeResolvedMsg:
+		if msg.index >= 0 && msg.index < len(m.results) {
+			m.results[msg.index].Size = msg.size
+		}
+		delete(m.resolvingSize, msg.index)
 		return m, nil
 
 	case statusMsg:
@@ -202,7 +287,8 @@ func (m Model) handleCommand() (tea.Model, tea.Cmd) {
 		}
 		m.status = fmt.Sprintf("搜索中: %s ...", keyword)
 		m.isErr = false
-		return m, searchCmd(m.app, keyword)
+		m.searchGeneration++
+		return m, searchStreamStartCmd(m.app, keyword, m.searchGeneration)
 
 	case strings.HasPrefix(lower, "movie "):
 		query := strings.TrimSpace(raw[6:])
@@ -212,7 +298,8 @@ func (m Model) handleCommand() (tea.Model, tea.Cmd) {
 		if resolved, ok := m.app.ResolveLocal(query); ok {
 			m.status = resolved.Display + " ..."
 			m.isErr = false
-			return m, searchCmd(m.app, resolved.Query)
+			m.searchGeneration++
+			return m, searchStreamStartCmd(m.app, resolved.Query, m.searchGeneration)
 		}
 		return m, statusCmd("无法识别电影名，试试：movie Inception 2010 1080P", true)
 
@@ -242,18 +329,35 @@ func (m Model) handleCommand() (tea.Model, tea.Cmd) {
 			if resolved, ok := m.app.ResolveLocal(raw); ok {
 				m.status = resolved.Display + " ..."
 				m.isErr = false
-				return m, searchCmd(m.app, resolved.Query)
+				m.searchGeneration++
+				return m, searchStreamStartCmd(m.app, resolved.Query, m.searchGeneration)
 			}
-			// 本地不认识 → 走 NLP pipeline（TMDB / Groq），显示 loading
+			// 本地不认识 → 先用原词发起流式搜索（投机搜索，决策 D2），同时走 NLP
 			m.status = "正在识别: " + raw + " ..."
 			m.isErr = false
-			return m, resolveCmd(m.app, raw)
+			m.searchGeneration++
+			originalGen := m.searchGeneration
+			return m, tea.Batch(
+				searchStreamStartCmd(m.app, raw, originalGen),
+				resolveCmd(m.app, raw),
+			)
 		}
 		if num < 1 || num > len(m.results) {
 			return m, statusCmd("搜索结果序号超出范围", true)
 		}
 		r := m.results[num-1]
-		return m, addMagnetCmd(m.app, r.Magnet, r.Name)
+		idx := num - 1
+		// 按需补全 size（决策 D4）
+		var resolveSize tea.Cmd
+		if r.Size == "未知" && r.Magnet != "" && !m.resolvingSize[idx] {
+			m.resolvingSize[idx] = true
+			resolveSize = resolveSizeCmd(m.app, idx, r.Magnet)
+		}
+		download := addMagnetCmd(m.app, r.Magnet, r.Name)
+		if resolveSize != nil {
+			return m, tea.Batch(download, resolveSize)
+		}
+		return m, download
 	}
 }
 
@@ -448,4 +552,9 @@ func pad(s string, width int) string {
 		return s
 	}
 	return s + strings.Repeat(" ", width-len(s))
+}
+
+// equalKeyword 比较两个关键词是否等同（忽略大小写和首尾空格）。
+func equalKeyword(a, b string) bool {
+	return strings.EqualFold(strings.TrimSpace(a), strings.TrimSpace(b))
 }
