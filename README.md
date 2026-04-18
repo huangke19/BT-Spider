@@ -125,6 +125,10 @@ air --build.cmd "go build -o ./tmp/bt-download-dev ./cmd/download" --build.entry
 
 ### TUI 模式
 
+#### 界面预览
+
+![BT-Spider TUI 预览](docs/images/tui-preview.png)
+
 ```bash
 # 默认模式就是 TUI；若二进制不存在会先自动编译
 ./run.sh
